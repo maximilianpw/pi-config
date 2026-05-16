@@ -1,0 +1,11 @@
+# Local Pi state: never commit credentials, sessions, or caches
+auth.json
+.env
+sessions/
+git/
+npm/
+node_modules/
+
+# OS/editor noise
+.DS_Store
+*.log
