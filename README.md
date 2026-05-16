@@ -2,11 +2,16 @@
 
 Personal Pi coding-agent configuration for Max.
 
-This repo is the editable source of truth. Home Manager links selected files into `~/.pi/agent` from `~/pi-config`.
+This repo is the editable source of truth for Pi-specific resources. Home
+Manager links selected files into `~/.pi/agent` from `~/pi-config`.
+
+Shared global agent instructions are managed in
+`~/nix-config/users/maxpw/agents/shared/AGENTS.md`. The root `AGENTS.md` in this
+repo is only local guidance for agents editing `pi-config`.
 
 ## Managed here
 
-- `AGENTS.md` — global agent instructions
+- `AGENTS.md` — repo-local agent instructions for working on this config repo
 - `settings.json` — Pi defaults
 - `extensions/` — global Pi extensions
 - `prompts/` — global prompt templates
