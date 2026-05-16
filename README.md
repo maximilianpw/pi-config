@@ -24,9 +24,9 @@ Never commit local runtime state or secrets:
 ## Extensions
 
 - `/copy-all` — copy current user/assistant branch to clipboard
-- `/changes` — ask the agent to summarize the current jj working-copy change
+- `/changes` — ask the agent to summarize the current jj or Git changes
 - `/usage` — ask the agent to compute Pi/Codex usage and costs
-- `jj-status-widget` — show current jj change summary in the UI
+- `vcs-status-widget` — show current jj or Git change summary in the UI
 - `tps-tracker` — show tokens/sec while streaming
 - `zsh-user-bash` — run interactive `!`/`!!` commands through zsh without sourcing prompt integrations
 

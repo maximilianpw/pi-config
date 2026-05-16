@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
-const WIDGET_ID = "jj-status-widget";
+const WIDGET_ID = "vcs-status-widget";
 const UPDATE_INTERVAL_MS = 2_000;
 
 async function run(command: string, args: string[], cwd: string) {
@@ -24,33 +24,65 @@ async function isJjRepo(cwd: string) {
   }
 }
 
-async function getSummary(cwd: string) {
+async function isGitRepo(cwd: string) {
+  try {
+    await run("git", ["rev-parse", "--show-toplevel"], cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function changedFileLabel(count: number) {
+  const fileLabel = count === 1 ? "file" : "files";
+  return `${count} changed ${fileLabel}`;
+}
+
+function countJjChangedFiles(status: string) {
+  return status
+    .split("\n")
+    .filter((line) => /^[AMDRC?][ MDRC?]?\s+/.test(line.trim()))
+    .length;
+}
+
+function countGitChangedFiles(status: string) {
+  return status.split("\n").filter((line) => line.trim().length > 0).length;
+}
+
+async function getJjSummary(cwd: string) {
   const [changeId, description, status] = await Promise.all([
     run("jj", ["log", "-r", "@", "--no-graph", "-T", "change_id.shortest()"], cwd),
     run("jj", ["log", "-r", "@", "--no-graph", "-T", "description.first_line()"], cwd),
     run("jj", ["st"], cwd),
   ]);
 
-  const changedFiles = status
-    .split("\n")
-    .filter((line) => /^[AMDRC?][ MDRC?]?\s+/.test(line.trim()))
-    .length;
-
   const label = description.trim() || "no description";
-  const fileLabel = changedFiles === 1 ? "file" : "files";
-  return `󱗆 ${changeId.trim()} · ${label} · ${changedFiles} changed ${fileLabel}`;
+  return `󱗆 ${changeId.trim()} · ${label} · ${changedFileLabel(countJjChangedFiles(status))}`;
+}
+
+async function getGitSummary(cwd: string) {
+  const [branch, detachedHead, status] = await Promise.all([
+    run("git", ["branch", "--show-current"], cwd),
+    run("git", ["rev-parse", "--short", "HEAD"], cwd),
+    run("git", ["status", "--porcelain=v1"], cwd),
+  ]);
+
+  const label = branch.trim() || `detached ${detachedHead.trim()}`;
+  return ` ${label} · ${changedFileLabel(countGitChangedFiles(status))}`;
+}
+
+async function getSummary(cwd: string) {
+  if (await isJjRepo(cwd)) return getJjSummary(cwd);
+  if (await isGitRepo(cwd)) return getGitSummary(cwd);
+  return undefined;
 }
 
 async function updateWidget(ctx: ExtensionContext) {
   if (!ctx.hasUI) return;
 
   try {
-    if (!(await isJjRepo(ctx.cwd))) {
-      ctx.ui.setWidget(WIDGET_ID, undefined);
-      return;
-    }
-
-    ctx.ui.setWidget(WIDGET_ID, [await getSummary(ctx.cwd)]);
+    const summary = await getSummary(ctx.cwd);
+    ctx.ui.setWidget(WIDGET_ID, summary ? [summary] : undefined);
   } catch {
     ctx.ui.setWidget(WIDGET_ID, undefined);
   }

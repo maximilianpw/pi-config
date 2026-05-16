@@ -1,8 +1,9 @@
 {
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "high",
   "hideThinkingBlock": false,
   "enableInstallTelemetry": false,
-  "theme": "dark"
+  "theme": "dark",
+  "lastChangelogVersion": "0.74.0"
 }
