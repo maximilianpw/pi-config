@@ -35,13 +35,29 @@ Never commit local runtime state or secrets:
 - `/changes` — ask the agent to summarize the current jj or Git changes
 - `/usage` — ask the agent to compute Pi/Codex usage and costs
 - `/handoff <goal>` — generate a focused prompt and start a fresh session
-- `/plan [on|off]` — toggle read-only planning mode before implementation
-- `/todos` — show plan execution progress
-- `safety-guard` — confirm dangerous bash commands and block protected-path writes
+- `/plannotator` or `Ctrl+Alt+P` — toggle browser-reviewed plan mode
+- `/plannotator-review` — review the current Git/JJ changes in Plannotator
+- `/plannotator-annotate <file>` and `/plannotator-last` — annotate Markdown or the latest response
+- `/save-md <name>` — save the latest assistant response as Markdown without overwriting
+- `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
+- `webfetch` and `websearch` — LLM-callable public web tools
+- `continue-after-compaction` — automatically continue work after context compaction
+- `herdr-agent-state` — report Pi activity to Herdr's agent-state UI
+- `safety-guard` — confirm dangerous bash commands, protect sensitive paths,
+  prevent `--no-verify`, and suppress interactive Git editors
 - `obsidian-tools` — LLM-callable tools for vault search/read/create/append
 - `github-issue-autocomplete` — complete `#123` issue references in GitHub repos
 - `vcs-status-widget` — show current jj or Git change summary in the UI
 - `tps-tracker` — show tokens/sec while streaming
+
+Start directly in Plannotator plan mode with:
+
+```bash
+pi --plan
+```
+
+The browser gate must approve the checklist before Pi leaves planning mode and
+starts implementation.
 
 ## Prompt templates
 
@@ -50,7 +66,6 @@ Never commit local runtime state or secrets:
 - `/jj-split` — propose a focused jj split plan
 - `/wiki-article` — draft a durable Obsidian wiki article
 - `/diagnose-brief` — run a compact diagnosis loop
-- `/architecture-audit` — identify architectural refactoring opportunities
 
 ## Applying changes
 
@@ -65,3 +80,19 @@ For quick Pi resource reloads inside an active Pi session, run:
 ```text
 /reload
 ```
+
+Install and verify extension dependencies with Bun:
+
+```bash
+bun install
+bun run check
+```
+
+## Upstream inspiration
+
+The compaction continuation, secret cloaking, Markdown export, and public web
+tools are adapted from
+[`dmmulroy/.dotfiles`](https://github.com/dmmulroy/.dotfiles/tree/3669c396c6426a613aceade2112315404dc8e39f/home/.pi)
+at commit `3669c396c6426a613aceade2112315404dc8e39f`. Local safety,
+package-management, theme, and platform integration changes are maintained
+here.

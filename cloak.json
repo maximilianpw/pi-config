@@ -1,0 +1,48 @@
+{
+  "enabled": true,
+  "cloakCharacter": "*",
+  "cloakLength": null,
+  "tryAllPatterns": true,
+  "patterns": [
+    {
+      "filePattern": [
+        "**/*.env",
+        "**/*.env.*",
+        "**/*.vars",
+        "**/*.vars.*"
+      ],
+      "cloakPattern": "(=\\s*).+",
+      "replace": "$1"
+    },
+    {
+      "filePattern": [
+        "**/*.json",
+        "**/*.jsonc"
+      ],
+      "cloakPattern": {
+        "pattern": "(\\\"(?:api[_-]?key|authorization|client[_-]?secret|id[_-]?token|password|refresh[_-]?token|secret|session[_-]?token|token)\\\"\\s*:\\s*\\\")[^\\\"]+",
+        "replace": "$1",
+        "flags": "i"
+      }
+    },
+    {
+      "filePattern": "**/*.toml",
+      "cloakPattern": {
+        "pattern": "(^\\s*(?:api[_-]?key|authorization|client[_-]?secret|password|secret|token)\\s*=\\s*).+",
+        "replace": "$1",
+        "flags": "im"
+      }
+    },
+    {
+      "filePattern": [
+        "**/*.yaml",
+        "**/*.yml"
+      ],
+      "cloakPattern": {
+        "pattern": "(^\\s*(?:api[_-]?key|authorization|client[_-]?secret|password|secret|token)\\s*:\\s*).+",
+        "replace": "$1",
+        "flags": "im"
+      }
+    }
+  ]
+}

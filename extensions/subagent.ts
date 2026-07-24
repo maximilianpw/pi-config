@@ -35,6 +35,22 @@ function finalTextFromMessage(message: any): string {
 		.trim();
 }
 
+function shellQuote(value: string): string {
+	return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function tmuxHasSession(sessionName: string): Promise<boolean> {
+	return await new Promise<boolean>((resolve) => {
+		const proc = spawn("tmux", ["-L", "pi-subagents", "has-session", "-t", sessionName], { stdio: "ignore" });
+		proc.on("close", (code) => resolve(code === 0));
+		proc.on("error", () => resolve(false));
+	});
+}
+
 async function runSubagent(params: {
 	task: string;
 	systemPrompt?: string;
@@ -42,12 +58,13 @@ async function runSubagent(params: {
 	tools?: string[];
 	cwd: string;
 	signal?: AbortSignal;
-}): Promise<{ output: string; stderr: string; exitCode: number }> {
+}): Promise<{ output: string; stderr: string; exitCode: number; sessionName?: string }> {
 	const args = ["--mode", "json", "-p", "--no-session"];
 	if (params.model) args.push("--model", params.model);
 	if (params.tools && params.tools.length > 0) args.push("--tools", params.tools.join(","));
 
 	let tmp: { dir: string; file: string } | undefined;
+	let sessionName: string | undefined;
 	try {
 		const systemPrompt = [
 			"You are a delegated Pi subagent running in an isolated context.",
@@ -60,64 +77,95 @@ async function runSubagent(params: {
 		args.push("--append-system-prompt", tmp.file, params.task);
 
 		const invocation = getPiInvocation(args);
-		let stderr = "";
-		let buffer = "";
-		let output = "";
+		const stdoutFile = path.join(tmp.dir, "stdout.jsonl");
+		const stderrFile = path.join(tmp.dir, "stderr.log");
+		const exitFile = path.join(tmp.dir, "exit-code");
+		const runnerFile = path.join(tmp.dir, "run-subagent.sh");
+		sessionName = `pi-subagent-${process.pid}-${Date.now().toString(36)}`;
+
+		const command = [invocation.command, ...invocation.args].map(shellQuote).join(" ");
+		await fs.promises.writeFile(
+			runnerFile,
+			[
+				"#!/usr/bin/env bash",
+				"set +e",
+				`cd ${shellQuote(params.cwd)}`,
+				`echo "Pi subagent running in tmux session: ${sessionName}" >&2`,
+				`echo "Attach with: tmux -L pi-subagents attach -t ${sessionName}" >&2`,
+				`${command} > >(tee ${shellQuote(stdoutFile)}) 2> >(tee ${shellQuote(stderrFile)} >&2)`,
+				"code=$?",
+				`printf '%s\\n' "$code" > ${shellQuote(exitFile)}`,
+				"exit $code",
+				"",
+			].join("\n"),
+			{ encoding: "utf8", mode: 0o700 },
+		);
+
 		let aborted = false;
+		const kill = () => {
+			aborted = true;
+			if (sessionName) {
+				spawn("tmux", ["-L", "pi-subagents", "kill-session", "-t", sessionName], { stdio: "ignore" });
+			}
+		};
 
-		const exitCode = await new Promise<number>((resolve) => {
-			const proc = spawn(invocation.command, invocation.args, {
-				cwd: params.cwd,
-				shell: false,
-				stdio: ["ignore", "pipe", "pipe"],
-			});
+		if (params.signal?.aborted) kill();
+		else params.signal?.addEventListener("abort", kill, { once: true });
 
-			const processLine = (line: string) => {
-				if (!line.trim()) return;
-				try {
-					const event = JSON.parse(line);
-					if (event.type === "message_end") {
-						const text = finalTextFromMessage(event.message);
-						if (text) output = text;
-					}
-				} catch {
-					// Ignore non-JSON noise.
-				}
-			};
-
-			proc.stdout.on("data", (data) => {
-				buffer += data.toString();
-				const lines = buffer.split("\n");
-				buffer = lines.pop() ?? "";
-				for (const line of lines) processLine(line);
-			});
-
-			proc.stderr.on("data", (data) => {
-				stderr += data.toString();
-			});
-
-			proc.on("close", (code) => {
-				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
-			});
-
-			proc.on("error", () => resolve(1));
-
-			const kill = () => {
-				aborted = true;
-				proc.kill("SIGTERM");
-				setTimeout(() => {
-					if (!proc.killed) proc.kill("SIGKILL");
-				}, 5000).unref?.();
-			};
-
-			if (params.signal?.aborted) kill();
-			else params.signal?.addEventListener("abort", kill, { once: true });
+		const tmux = spawn("tmux", ["-L", "pi-subagents", "new-session", "-d", "-s", sessionName, runnerFile], {
+			cwd: params.cwd,
+			shell: false,
+			stdio: ["ignore", "ignore", "pipe"],
 		});
 
+		let tmuxError = "";
+		tmux.stderr.on("data", (data) => {
+			tmuxError += data.toString();
+		});
+
+		const tmuxExitCode = await new Promise<number>((resolve) => {
+			tmux.on("close", (code) => resolve(code ?? 0));
+			tmux.on("error", () => resolve(1));
+		});
+		if (tmuxExitCode !== 0) return { output: "", stderr: tmuxError || "Failed to start tmux subagent session.", exitCode: tmuxExitCode, sessionName };
+
+		while (!fs.existsSync(exitFile)) {
+			if (aborted) throw new Error("Subagent was aborted");
+			if (!(await tmuxHasSession(sessionName))) {
+				const stderr = await fs.promises.readFile(stderrFile, "utf8").catch(() => "");
+				return { output: "", stderr: stderr || "tmux subagent session ended before writing an exit code.", exitCode: 1, sessionName };
+			}
+			await sleep(250);
+		}
+
 		if (aborted) throw new Error("Subagent was aborted");
-		return { output, stderr, exitCode };
+
+		const [stdout, stderr, exitText] = await Promise.all([
+			fs.promises.readFile(stdoutFile, "utf8").catch(() => ""),
+			fs.promises.readFile(stderrFile, "utf8").catch(() => ""),
+			fs.promises.readFile(exitFile, "utf8").catch(() => "1"),
+		]);
+
+		let output = "";
+		for (const line of stdout.split("\n")) {
+			if (!line.trim()) continue;
+			try {
+				const event = JSON.parse(line);
+				if (event.type === "message_end") {
+					const text = finalTextFromMessage(event.message);
+					if (text) output = text;
+				}
+			} catch {
+				// Ignore non-JSON noise.
+			}
+		}
+
+		const parsedExitCode = Number.parseInt(exitText.trim(), 10);
+		return { output, stderr, exitCode: Number.isNaN(parsedExitCode) ? 1 : parsedExitCode, sessionName };
 	} finally {
+		if (sessionName) {
+			spawn("tmux", ["-L", "pi-subagents", "kill-session", "-t", sessionName], { stdio: "ignore" });
+		}
 		if (tmp) {
 			await fs.promises.rm(tmp.dir, { recursive: true, force: true }).catch(() => undefined);
 		}
@@ -129,10 +177,11 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent",
 		label: "Subagent",
 		description:
-			"Delegate a self-contained task to an isolated Pi subagent. The parent receives only the final answer, not intermediate context. Defaults to read-only tools; pass tools explicitly for edit/bash/write access.",
+			"Delegate a self-contained task to an isolated Pi subagent launched in a detached tmux session. The parent receives only the final answer, not intermediate context. Defaults to read-only tools; pass tools explicitly for edit/bash/write access.",
 		promptSnippet: "Delegate self-contained research or implementation subtasks to an isolated Pi subagent",
 		promptGuidelines: [
 			"Use subagent for self-contained tasks where only the final result is needed and intermediate context would be noisy.",
+			"Subagents run in detached tmux sessions on the pi-subagents socket while active.",
 			"The subagent tool defaults to read-only access; pass tools explicitly when the delegated task needs bash, edit, or write.",
 		],
 		parameters: Type.Object({

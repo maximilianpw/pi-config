@@ -5,6 +5,8 @@ sessions/
 git/
 npm/
 node_modules/
+.bun/
+coverage/
 
 # OS/editor noise
 .DS_Store

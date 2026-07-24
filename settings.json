@@ -4,8 +4,12 @@
   "defaultThinkingLevel": "medium",
   "hideThinkingBlock": false,
   "enableInstallTelemetry": false,
-  "theme": "dark",
-  "lastChangelogVersion": "0.75.1",
-  "enabledModels": ["openai-codex/gpt-5.5"]
+  "theme": "everforest-dark-hard",
+  "lastChangelogVersion": "0.80.3",
+  "enabledModels": [
+    "openai-codex/gpt-5.5"
+  ],
+  "packages": [
+    "npm:@plannotator/pi-extension"
+  ]
 }
-

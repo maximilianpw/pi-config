@@ -31,6 +31,24 @@ const PROTECTED_PATH_MARKERS = [
   `${path.sep}nix${path.sep}store${path.sep}`,
 ];
 
+const GIT_ENV_PREFIX = "export GIT_EDITOR=true GIT_SEQUENCE_EDITOR=true GIT_MERGE_AUTOEDIT=no\n";
+const GIT_COMMAND_PATTERN = /(?:^|[;&|(\n]\s*)git(?:\s|$)/;
+const NO_VERIFY_PATTERN = /--no-verify\b/;
+
+export function guardGitCommand(command: string): { command: string; blockReason?: string } {
+  if (!GIT_COMMAND_PATTERN.test(command)) return { command };
+
+  if (NO_VERIFY_PATTERN.test(command)) {
+    return {
+      command,
+      blockReason:
+        "Blocked --no-verify. Fix the failing Git hook, or ask the user for help instead of bypassing it.",
+    };
+  }
+
+  return { command: `${GIT_ENV_PREFIX}${command}` };
+}
+
 function normalizePathForCheck(rawPath: string, cwd: string): string {
   const stripped = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
   return path.resolve(cwd, stripped);
@@ -94,6 +112,14 @@ export default function (pi: ExtensionAPI) {
         block: true,
         reason: `Blocked bash command that appears to modify protected path (${protectedPath}).`,
       };
+    }
+
+    const gitGuard = guardGitCommand(command);
+    if (gitGuard.blockReason) {
+      return { block: true, reason: gitGuard.blockReason };
+    }
+    if (gitGuard.command !== command) {
+      (event.input as { command: string }).command = gitGuard.command;
     }
 
     return undefined;
