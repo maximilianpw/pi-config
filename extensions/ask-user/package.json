@@ -1,0 +1,18 @@
+{
+  "name": "pi-ask-user-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "check": "bun run typecheck"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

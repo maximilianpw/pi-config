@@ -1,0 +1,22 @@
+{
+  "name": "pi-workflows-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "node --test --experimental-strip-types *.test.ts",
+    "check": "bun run typecheck && bun run test"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "acorn": "^8.17.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -5,7 +5,7 @@
   "hideThinkingBlock": true,
   "enableInstallTelemetry": false,
   "theme": "everforest-dark-hard",
-  "lastChangelogVersion": "0.81.1",
+  "lastChangelogVersion": "0.82.0",
   "enabledModels": [
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-luna",
