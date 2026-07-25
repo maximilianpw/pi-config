@@ -34,6 +34,7 @@ Never commit local runtime state or secrets:
 - `/copy-all` — copy current user/assistant branch to clipboard
 - `/changes` — ask the agent to summarize the current jj or Git changes
 - `/usage` — ask the agent to compute Pi/Codex usage and costs
+- `/loop plan|run|tasks|log|status|stop` — plan and run bounded saved-task loops with compact per-iteration logs
 - `/handoff <goal>` — generate a focused prompt and start a fresh session
 - `/plannotator` or `Ctrl+Alt+P` — toggle browser-reviewed plan mode
 - `/plannotator-review` — review the current Git/JJ changes in Plannotator
