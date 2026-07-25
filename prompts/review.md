@@ -2,7 +2,7 @@
 description: Review current code changes for bugs, risks, and missed verification
 argument-hint: "[focus]"
 ---
-Review the current repository changes. Prefer `jj` when this is a jj repo; otherwise use Git.
+Review the current repository changes.
 
 Focus: $ARGUMENTS
 
