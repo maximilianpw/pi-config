@@ -21,13 +21,24 @@ test("classifyMimeType recognizes supported raster images and binary fallback", 
 	assert.equal(classifyMimeType("application/json"), "text");
 });
 
-test("isPrivateOrLocalIp detects local and private IP ranges", () => {
+test("isPrivateOrLocalIp detects private, local, and reserved IP ranges", () => {
 	assert.equal(isPrivateOrLocalIp("127.0.0.1"), true);
 	assert.equal(isPrivateOrLocalIp("10.0.0.5"), true);
 	assert.equal(isPrivateOrLocalIp("192.168.1.20"), true);
 	assert.equal(isPrivateOrLocalIp("172.20.0.1"), true);
+	assert.equal(isPrivateOrLocalIp("192.0.2.1"), true);
+	assert.equal(isPrivateOrLocalIp("198.18.0.1"), true);
+	assert.equal(isPrivateOrLocalIp("198.51.100.1"), true);
+	assert.equal(isPrivateOrLocalIp("203.0.113.1"), true);
+	assert.equal(isPrivateOrLocalIp("224.0.0.1"), true);
+	assert.equal(isPrivateOrLocalIp("240.0.0.1"), true);
 	assert.equal(isPrivateOrLocalIp("::1"), true);
 	assert.equal(isPrivateOrLocalIp("fc00::1"), true);
+	assert.equal(isPrivateOrLocalIp("fec0::1"), true);
+	assert.equal(isPrivateOrLocalIp("ff02::1"), true);
+	assert.equal(isPrivateOrLocalIp("2001:db8::1"), true);
+	assert.equal(isPrivateOrLocalIp("2002::1"), true);
+	assert.equal(isPrivateOrLocalIp("3fff:fff::1"), true);
 	assert.equal(isPrivateOrLocalIp("::ffff:127.0.0.1"), true);
 	assert.equal(isPrivateOrLocalIp("::ffff:7f00:1"), true);
 	assert.equal(isPrivateOrLocalIp("0:0:0:0:0:ffff:7f00:1"), true);
@@ -36,6 +47,7 @@ test("isPrivateOrLocalIp detects local and private IP ranges", () => {
 	assert.equal(isPrivateOrLocalIp("::127.0.0.1"), true);
 	assert.equal(isPrivateOrLocalIp("::7f00:1"), true);
 	assert.equal(isPrivateOrLocalIp("8.8.8.8"), false);
+	assert.equal(isPrivateOrLocalIp("2606:4700:4700::1111"), false);
 	assert.equal(isPrivateOrLocalIp("::ffff:808:808"), false);
 });
 
@@ -75,6 +87,19 @@ test("FetchPublicWebClient rejects IPv4-mapped IPv6 private hosts before fetchin
 
 	assert.equal(result._tag, "err");
 	assert.equal(result.error._tag, "PrivateIpBlocked");
+});
+
+test("FetchPublicWebClient fails closed when DNS preflight fails or returns no addresses", async () => {
+	for (const resolveHostname of [
+		async () => Promise.reject(new Error("DNS unavailable")),
+		async () => [],
+	]) {
+		const client = new FetchPublicWebClient(resolveHostname);
+		const result = await client.get(makeRequest("https://example.com/", { blockPrivateHosts: true }));
+
+		assert.equal(result._tag, "err");
+		assert.equal(result.error._tag, "HostResolutionFailed");
+	}
 });
 
 test("FetchPublicWebClient rejects redirects with URL credentials before fetching target", async () => {

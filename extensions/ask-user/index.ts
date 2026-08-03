@@ -328,9 +328,19 @@ export default function askUser(pi: ExtensionAPI) {
           };
         });
 
-      const result = await showQuestion(
-        signal ?? new AbortController().signal,
-      );
+      pi.events.emit("herdr:blocked", {
+        active: true,
+        label: `Question: ${params.question}`,
+      });
+
+      let result: SelectionResult;
+      try {
+        result = await showQuestion(
+          signal ?? new AbortController().signal,
+        );
+      } finally {
+        pi.events.emit("herdr:blocked", { active: false });
+      }
 
       if (!result) {
         return reply(buildAskUserResultMessage({ kind: "dismissed" }));

@@ -29,6 +29,7 @@ export type PublicWebError =
 	| { readonly _tag: "UrlCredentialsUnsupported"; readonly url: Redacted<string> }
 	| { readonly _tag: "PrivateHostBlocked"; readonly url: PublicHttpUrl }
 	| { readonly _tag: "PrivateIpBlocked"; readonly url: PublicHttpUrl }
+	| { readonly _tag: "HostResolutionFailed"; readonly url: PublicHttpUrl }
 	| { readonly _tag: "RedirectLocationMissing"; readonly url: PublicHttpUrl }
 	| { readonly _tag: "RedirectLocationInvalid" }
 	| { readonly _tag: "RedirectLimitExceeded"; readonly url: PublicHttpUrl; readonly maxRedirects: number }

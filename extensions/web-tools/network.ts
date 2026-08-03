@@ -18,6 +18,10 @@ const TEXT_MIME_TYPES = new Set([
 ]);
 const RASTER_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
+type LookupHost = (hostname: string) => Promise<readonly { readonly address: string }[]>;
+
+const lookupHost: LookupHost = (hostname) => lookup(hostname, { all: true, verbatim: true });
+
 export interface FetchWithRedirectsOptions {
 	headers: Record<string, string>;
 	signal?: AbortSignal;
@@ -228,18 +232,19 @@ async function assertPublicUrl(url: URL): Promise<void> {
 		throw new Error("Blocked private or local IP address");
 	}
 
+	let records: readonly { readonly address: string }[];
 	try {
-		const records = await lookup(hostname, { all: true, verbatim: true });
-		for (const record of records) {
-			if (isPrivateOrLocalIp(record.address)) {
-				throw new Error("Blocked private or local IP address");
-			}
+		records = await lookupHost(hostname);
+	} catch {
+		throw new Error("Could not safely resolve host");
+	}
+	if (records.length === 0) {
+		throw new Error("Could not safely resolve host");
+	}
+	for (const record of records) {
+		if (isPrivateOrLocalIp(record.address)) {
+			throw new Error("Blocked private, local, or reserved IP address");
 		}
-	} catch (error) {
-		if (error instanceof Error && error.message === "Blocked private or local IP address") {
-			throw error;
-		}
-		// If DNS resolution fails, let the later fetch surface the real connectivity error.
 	}
 }
 
@@ -291,23 +296,70 @@ export function isPrivateOrLocalIp(input: string): boolean {
 	const version = isIP(ip);
 	if (version === 4) {
 		const octets = ip.split(".").map((part) => Number.parseInt(part, 10));
-		const [a, b] = octets;
-		if (a === 10) return true;
-		if (a === 127) return true;
-		if (a === 0) return true;
-		if (a === 169 && b === 254) return true;
-		if (a === 192 && b === 168) return true;
-		if (a === 172 && b >= 16 && b <= 31) return true;
+		const [a, b, c] = octets;
+		if (a === 0 || a === 10 || a === 127) return true;
 		if (a === 100 && b >= 64 && b <= 127) return true;
+		if (a === 169 && b === 254) return true;
+		if (a === 172 && b >= 16 && b <= 31) return true;
+		if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+		if (a === 192 && b === 88 && c === 99) return true;
+		if (a === 192 && b === 168) return true;
+		if (a === 198 && (b === 18 || b === 19)) return true;
+		if (a === 198 && b === 51 && c === 100) return true;
+		if (a === 203 && b === 0 && c === 113) return true;
+		if (a >= 224) return true;
 		return false;
 	}
 	if (version === 6) {
-		if (ip === "::1" || ip === "::") return true;
-		if (ip.startsWith("fc") || ip.startsWith("fd")) return true;
-		if (/^fe[89ab]/.test(ip)) return true;
-		return false;
+		const groups = parseIpv6Groups(ip);
+		if (!groups) return true;
+		return IPV6_BLOCKED_PREFIXES.some(({ network, prefix }) => ipv6MatchesPrefix(groups, network, prefix));
 	}
 	return false;
+}
+
+const IPV6_BLOCKED_PREFIXES = [
+	{ network: [0x0000, 0, 0, 0, 0, 0, 0, 0], prefix: 128 }, // Unspecified
+	{ network: [0x0000, 0, 0, 0, 0, 0, 0, 1], prefix: 128 }, // Loopback
+	{ network: [0x0064, 0xff9b, 0, 0, 0, 0, 0, 0], prefix: 96 }, // IPv4/IPv6 translation
+	{ network: [0x0064, 0xff9b, 1, 0, 0, 0, 0, 0], prefix: 48 }, // Local-use translation
+	{ network: [0x0100, 0, 0, 0, 0, 0, 0, 0], prefix: 64 }, // Discard-only
+	{ network: [0x2001, 0, 0, 0, 0, 0, 0, 0], prefix: 23 }, // IETF protocol assignments
+	{ network: [0x2001, 0x0db8, 0, 0, 0, 0, 0, 0], prefix: 32 }, // Documentation
+	{ network: [0x2002, 0, 0, 0, 0, 0, 0, 0], prefix: 16 }, // 6to4
+	{ network: [0x3fff, 0, 0, 0, 0, 0, 0, 0], prefix: 20 }, // Documentation
+	{ network: [0xfc00, 0, 0, 0, 0, 0, 0, 0], prefix: 7 }, // Unique local
+	{ network: [0xfe80, 0, 0, 0, 0, 0, 0, 0], prefix: 10 }, // Link-local
+	{ network: [0xfec0, 0, 0, 0, 0, 0, 0, 0], prefix: 10 }, // Deprecated site-local
+	{ network: [0xff00, 0, 0, 0, 0, 0, 0, 0], prefix: 8 }, // Multicast
+] as const;
+
+function ipv6MatchesPrefix(groups: readonly number[], network: readonly number[], prefix: number): boolean {
+	const fullGroups = Math.floor(prefix / 16);
+	for (let index = 0; index < fullGroups; index += 1) {
+		if (groups[index] !== network[index]) return false;
+	}
+
+	const remainingBits = prefix % 16;
+	if (remainingBits === 0) return true;
+	const mask = (0xffff << (16 - remainingBits)) & 0xffff;
+	return ((groups[fullGroups] ?? 0) & mask) === ((network[fullGroups] ?? 0) & mask);
+}
+
+function parseIpv6Groups(address: string): number[] | undefined {
+	const pieces = address.split("::");
+	if (pieces.length > 2) return undefined;
+
+	const left = pieces[0] ? pieces[0].split(":") : [];
+	const right = pieces.length === 2 && pieces[1] ? pieces[1].split(":") : [];
+	const missing = 8 - left.length - right.length;
+	if ((pieces.length === 1 && missing !== 0) || missing < 0) return undefined;
+
+	const groups = [...left, ...Array.from({ length: missing }, () => "0"), ...right].map((part) => {
+		if (!/^[0-9a-f]{1,4}$/i.test(part)) return -1;
+		return Number.parseInt(part, 16);
+	});
+	return groups.length === 8 && groups.every((group) => group >= 0 && group <= 0xffff) ? groups : undefined;
 }
 
 function normalizeIpLiteral(input: string): string {
@@ -379,12 +431,14 @@ function parseIpv6Hex16(segment: string | undefined): number | undefined {
 }
 
 export class FetchPublicWebClient implements PublicWebClient {
+	constructor(private readonly resolveHostname: LookupHost = lookupHost) {}
+
 	/** Fetch a bounded public web response, following safe redirects. */
 	async get(
 		request: PublicWebRequest,
 		options: { readonly signal?: AbortSignal } = {},
 	): Promise<Result<PublicWebResponse, PublicWebError>> {
-		const firstFetch = await fetchWithUserAgent(request, request.userAgent, options.signal);
+		const firstFetch = await fetchWithUserAgent(request, request.userAgent, this.resolveHostname, options.signal);
 		if (firstFetch._tag === "err") {
 			return firstFetch;
 		}
@@ -393,7 +447,7 @@ export class FetchPublicWebClient implements PublicWebClient {
 		let finalUrl = firstFetch.value.finalUrl;
 		if (isCloudflareChallenge(response)) {
 			await response.body?.cancel().catch(() => undefined);
-			const retryFetch = await fetchWithUserAgent(request, request.fallbackUserAgent, options.signal);
+			const retryFetch = await fetchWithUserAgent(request, request.fallbackUserAgent, this.resolveHostname, options.signal);
 			if (retryFetch._tag === "err") {
 				return retryFetch;
 			}
@@ -441,6 +495,7 @@ export class FetchPublicWebClient implements PublicWebClient {
 async function fetchWithUserAgent(
 	request: PublicWebRequest,
 	userAgent: string,
+	resolveHostname: LookupHost,
 	signal?: AbortSignal,
 ): Promise<Result<{ readonly response: Response; readonly finalUrl: PublicHttpUrl }, PublicWebError>> {
 	let currentUrl = new URL(request.url);
@@ -457,7 +512,7 @@ async function fetchWithUserAgent(
 		}
 
 		if (request.blockPrivateHosts) {
-			const publicCheck = await checkPublicUrl(currentUrl, currentPublicUrl.value);
+			const publicCheck = await checkPublicUrl(currentUrl, currentPublicUrl.value, resolveHostname);
 			if (publicCheck._tag === "err") {
 				return publicCheck;
 			}
@@ -514,7 +569,11 @@ function createPublicWebHeaders(accept: string, userAgent: string): Record<strin
 	};
 }
 
-async function checkPublicUrl(url: URL, publicUrl: PublicHttpUrl): Promise<Result<void, PublicWebError>> {
+async function checkPublicUrl(
+	url: URL,
+	publicUrl: PublicHttpUrl,
+	resolveHostname: LookupHost,
+): Promise<Result<void, PublicWebError>> {
 	const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
 	if (isBlockedHostname(hostname)) {
 		return err({ _tag: "PrivateHostBlocked", url: publicUrl });
@@ -523,15 +582,19 @@ async function checkPublicUrl(url: URL, publicUrl: PublicHttpUrl): Promise<Resul
 		return err({ _tag: "PrivateIpBlocked", url: publicUrl });
 	}
 
+	let records: readonly { readonly address: string }[];
 	try {
-		const records = await lookup(hostname, { all: true, verbatim: true });
-		for (const record of records) {
-			if (isPrivateOrLocalIp(record.address)) {
-				return err({ _tag: "PrivateIpBlocked", url: publicUrl });
-			}
-		}
+		records = await resolveHostname(hostname);
 	} catch {
-		// If DNS resolution fails, let fetch surface the connectivity failure.
+		return err({ _tag: "HostResolutionFailed", url: publicUrl });
+	}
+	if (records.length === 0) {
+		return err({ _tag: "HostResolutionFailed", url: publicUrl });
+	}
+	for (const record of records) {
+		if (isPrivateOrLocalIp(record.address)) {
+			return err({ _tag: "PrivateIpBlocked", url: publicUrl });
+		}
 	}
 
 	return ok(undefined);

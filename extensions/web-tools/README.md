@@ -28,7 +28,8 @@ Behavior notes:
 
 - only `http://` and `https://` URLs are supported
 - URL userinfo credentials (`https://user:pass@example.com`) are rejected and redacted in diagnostics
-- private/local hosts and IPs are blocked by default
+- private, local, reserved, and multicast addresses are blocked by default
+- DNS preflight failures are rejected instead of falling through to the network request
 - raster images (`png`, `jpeg`, `gif`, `webp`) are returned inline as images
 - HTML is converted to markdown or text when requested
 - binary content is rejected
@@ -53,7 +54,7 @@ Current defaults:
 
 Behavior notes:
 
-- uses the configured Exa MCP-compatible endpoint
+- uses Exa's official MCP endpoint at `https://mcp.exa.ai/mcp`
 - Exa currently supports provider depths `auto` and `fast`; tool input `deep` is downgraded to `fast`
 - search responses are limited to `1 MB`
 - provider requests currently send:

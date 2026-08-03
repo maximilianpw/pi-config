@@ -215,7 +215,9 @@ function renderSafeWebFetchError(error: WebFetchBoundaryError): string {
 		case "PrivateHostBlocked":
 			return "Blocked private or local host";
 		case "PrivateIpBlocked":
-			return "Blocked private or local IP address";
+			return "Blocked private, local, or reserved IP address";
+		case "HostResolutionFailed":
+			return "Could not safely resolve host";
 		case "RedirectLocationMissing":
 			return "Redirect response was missing a Location header";
 		case "RedirectLocationInvalid":
