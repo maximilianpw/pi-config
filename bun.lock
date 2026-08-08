@@ -24,6 +24,15 @@
         "typescript": "^7.0.2",
       },
     },
+    "extensions/linear": {
+      "name": "pi-linear-extension",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^26.1.1",
+        "tsx": "^4.20.5",
+        "typescript": "^7.0.2",
+      },
+    },
     "extensions/save-md": {
       "name": "pi-save-md-extension",
       "version": "0.1.0",
@@ -628,6 +637,8 @@
     "peberminta": ["peberminta@0.9.0", "", {}, "sha512-XIxfHpEuSJbITd1H3EeQwpcZbTLHc+VVr8ANI9t5sit565tsI4/xK3KWTUFE2e6QiangUkh3B0jihzmGnNrRsQ=="],
 
     "pi-ask-user-extension": ["pi-ask-user-extension@workspace:extensions/ask-user"],
+
+    "pi-linear-extension": ["pi-linear-extension@workspace:extensions/linear"],
 
     "pi-save-md-extension": ["pi-save-md-extension@workspace:extensions/save-md"],
 
