@@ -3,15 +3,20 @@
   "defaultModel": "gpt-5.6-sol",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
+  "treeFilterMode": "no-tools",
+  "steeringMode": "all",
+  "followUpMode": "all",
   "enableInstallTelemetry": false,
-  "theme": "everforest-dark-hard",
-  "lastChangelogVersion": "0.83.0",
+  "theme": "catppuccin-mocha",
+  "lastChangelogVersion": "0.84.1",
   "enabledModels": [
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-luna",
     "openai-codex/gpt-5.6-terra"
   ],
   "packages": [
-    "npm:@plannotator/pi-extension"
-  ]
+    "npm:@plannotator/pi-extension",
+    "npm:pi-mcp-adapter@2.21.1"
+  ],
+  "tuiMode": "fullscreen"
 }
