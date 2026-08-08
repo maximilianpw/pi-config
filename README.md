@@ -50,14 +50,22 @@ Never commit local runtime state or secrets:
 - `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
 - `webfetch` and `websearch` — LLM-callable public web tools
 - `continue-after-compaction` — automatically continue work after context compaction
+- `whimsical-working-message` — rotate playful status text while Pi is working
 - `herdr-agent-state` — report Pi activity to Herdr's agent-state UI
 - `safety-guard` — confirm dangerous bash commands, protect sensitive paths,
   prevent `--no-verify`, and suppress interactive Git editors
 - `obsidian-tools` — LLM-callable tools for vault search/read/create/append
 - `github-issue-autocomplete` — complete `#123` issue references in GitHub repos
+- `linear_create_issue`, `linear_get_issue`, `linear_list_issues`, and
+  `linear_update_issue` — create, inspect, search, and update Linear issues;
+  the default team is configured with `LINEAR_DEFAULT_TEAM` outside this repo
+  (uses the sops-nix `linear-api-key` secret, `LINEAR_API_KEY_FILE`, or
+  `LINEAR_API_KEY`)
 - `vcs-status-widget` — show current jj or Git change summary in the UI
 - `tps-tracker` — show first-chunk-adjusted tokens/sec while streaming without
   counting tool-call argument deltas
+- `mcp` and `mcpScript` — lazily discover and run tools from configured MCP
+  servers through `pi-mcp-adapter`, pinned to `2.21.1` for Pi `0.84.1`
 
 Start directly in Plannotator plan mode with:
 
@@ -107,6 +115,8 @@ and local UI integration are maintained here.
 The compaction continuation, secret cloaking, Markdown export, and public web
 tools are adapted from
 [`dmmulroy/.dotfiles`](https://github.com/dmmulroy/.dotfiles/tree/3669c396c6426a613aceade2112315404dc8e39f/home/.pi)
-at commit `3669c396c6426a613aceade2112315404dc8e39f`. Local safety,
+at commit `3669c396c6426a613aceade2112315404dc8e39f`. The whimsical working
+messages are a curated subset of that configuration at commit
+`40608fec75c3158595c064dd9213e0a97a21c74f`. Local safety,
 package-management, theme, and platform integration changes are maintained
 here.
