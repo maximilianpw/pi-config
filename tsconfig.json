@@ -14,6 +14,7 @@
     "extensions/herdr-agent-state.ts",
     "extensions/pi-cloak/index.ts",
     "extensions/safety-guard.ts",
+    "extensions/whimsical-working-message.ts",
     "test/workflow-guards.test.ts"
   ]
 }
