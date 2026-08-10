@@ -9,7 +9,7 @@
   "scripts": {
     "typecheck": "tsc --project tsconfig.json --pretty false",
     "test": "node --import tsx --test test/**/*.test.ts",
-    "check": "bun run typecheck && bun run test && bun run --filter pi-save-md-extension check && bun run --filter pi-web-tools-extension check && bun run --filter pi-ask-user-extension check && bun run --filter pi-linear-extension check && bun run --filter pi-subagents-extension check && bun run --filter pi-workflows-extension check"
+    "check": "bun run typecheck && bun run test && bun run --filter pi-save-md-extension check && bun run --filter pi-web-tools-extension check && bun run --filter pi-ask-user-extension check && bun run --filter pi-linear-extension check && bun run --filter pi-skill-toggle check && bun run --filter pi-subagents-extension check && bun run --filter pi-workflows-extension check"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.82.0",

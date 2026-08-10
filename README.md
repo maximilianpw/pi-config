@@ -47,6 +47,8 @@ Never commit local runtime state or secrets:
 - `/plannotator-review` — review the current Git/JJ changes in Plannotator
 - `/plannotator-annotate <file>` and `/plannotator-last` — annotate Markdown or the latest response
 - `/save-md <name>` — save the latest assistant response as Markdown without overwriting
+- `/toggle-skills` — toggle discovered skills between agent-invocable and manual-only,
+  then reload Pi resources
 - `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
 - `webfetch` and `websearch` — LLM-callable public web tools
 - `continue-after-compaction` — automatically continue work after context compaction
@@ -115,8 +117,8 @@ and local UI integration are maintained here.
 The compaction continuation, secret cloaking, Markdown export, and public web
 tools are adapted from
 [`dmmulroy/.dotfiles`](https://github.com/dmmulroy/.dotfiles/tree/3669c396c6426a613aceade2112315404dc8e39f/home/.pi)
-at commit `3669c396c6426a613aceade2112315404dc8e39f`. The whimsical working
-messages are a curated subset of that configuration at commit
+at commit `3669c396c6426a613aceade2112315404dc8e39f`. The skill toggle and
+whimsical working messages are adapted from that configuration at commit
 `40608fec75c3158595c064dd9213e0a97a21c74f`. Local safety,
 package-management, theme, and platform integration changes are maintained
 here.

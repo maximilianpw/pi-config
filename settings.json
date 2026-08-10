@@ -16,7 +16,6 @@
   ],
   "packages": [
     "npm:@plannotator/pi-extension",
-    "npm:pi-mcp-adapter@2.21.1"
+    "npm:pi-mcp-adapter"
   ],
-  "tuiMode": "fullscreen"
 }
