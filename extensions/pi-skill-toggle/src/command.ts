@@ -1,9 +1,8 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { SkillInventory } from "./inventory/loader.ts";
 import type { SkillTogglePlanner } from "./apply/planner.ts";
 import type { SkillChangeWriter } from "./apply/writer.ts";
-import { showSkillToggleUi } from "./ui/overlay.ts";
-import type { ApplyResult } from "./types.ts";
+import type { SkillInventory } from "./inventory/loader.ts";
+import type { ApplyResult, SkillDraft } from "./types.ts";
 
 export interface ToggleSkillsCommandDeps {
   inventory: SkillInventory;
@@ -11,17 +10,19 @@ export interface ToggleSkillsCommandDeps {
   writer: SkillChangeWriter;
 }
 
-export async function runToggleSkillsCommand(ctx: ExtensionCommandContext, deps: ToggleSkillsCommandDeps): Promise<void> {
-  if (ctx.mode !== "tui") {
-    ctx.ui.notify("/toggle-skills requires TUI mode", "error");
-    return;
-  }
-
+/** Disable model invocation for every editable skill that Pi discovers, then reload resources. */
+export async function runToggleSkillsCommand(
+  ctx: ExtensionCommandContext,
+  deps: ToggleSkillsCommandDeps,
+): Promise<void> {
   let skills;
   try {
     skills = await deps.inventory.load(ctx.cwd);
   } catch (error) {
-    ctx.ui.notify(`Pi Skill Toggle failed to scan skills: ${error instanceof Error ? error.message : String(error)}`, "error");
+    ctx.ui.notify(
+      `Pi Skill Toggle failed to scan skills: ${error instanceof Error ? error.message : String(error)}`,
+      "error",
+    );
     return;
   }
 
@@ -30,19 +31,23 @@ export async function runToggleSkillsCommand(ctx: ExtensionCommandContext, deps:
     return;
   }
 
-  const result = await showSkillToggleUi(ctx, skills);
-  if (result.action !== "apply") return;
-
+  const drafts: SkillDraft[] = skills.map((skill) => ({
+    skill,
+    desiredMode: "manual-only",
+  }));
   let changes;
   try {
-    changes = await deps.planner.plan(skills, result.drafts);
+    changes = await deps.planner.plan(skills, drafts);
   } catch (error) {
-    ctx.ui.notify(`Pi Skill Toggle failed to plan changes: ${error instanceof Error ? error.message : String(error)}`, "error");
+    ctx.ui.notify(
+      `Pi Skill Toggle failed to plan changes: ${error instanceof Error ? error.message : String(error)}`,
+      "error",
+    );
     return;
   }
 
   if (changes.length === 0) {
-    ctx.ui.notify("Pi Skill Toggle: no changes to apply", "info");
+    ctx.ui.notify("Pi Skill Toggle: all editable skills are already manual-only", "info");
     return;
   }
 
@@ -55,13 +60,9 @@ export async function runToggleSkillsCommand(ctx: ExtensionCommandContext, deps:
 }
 
 function formatApplyResult(result: ApplyResult): string {
-  const lines = [`Pi Skill Toggle applied ${result.applied.length} change${result.applied.length === 1 ? "" : "s"}.`];
-  for (const change of result.applied.slice(0, 6)) {
-    lines.push(`- ${change.skill.name}: ${change.from} → ${change.to}`);
-  }
-  if (result.applied.length > 6) {
-    lines.push(`- … ${result.applied.length - 6} more`);
-  }
+  const lines = [
+    `Pi Skill Toggle made ${result.applied.length} skill${result.applied.length === 1 ? "" : "s"} manual-only.`,
+  ];
   if (result.errors.length > 0) {
     lines.push(`Errors/skipped: ${result.errors.length}`);
     for (const error of result.errors.slice(0, 4)) {
@@ -69,7 +70,7 @@ function formatApplyResult(result: ApplyResult): string {
     }
   }
   if (result.applied.length > 0) {
-    lines.push("Reloaded skills, prompts, extensions, and themes.");
+    lines.push("Reloading skills, prompts, extensions, and themes.");
   }
   return lines.join("\n");
 }

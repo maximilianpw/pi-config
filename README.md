@@ -47,10 +47,10 @@ Never commit local runtime state or secrets:
 - `/plannotator-review` — review the current Git/JJ changes in Plannotator
 - `/plannotator-annotate <file>` and `/plannotator-last` — annotate Markdown or the latest response
 - `/save-md <name>` — save the latest assistant response as Markdown without overwriting
-- `/toggle-skills` — toggle discovered skills between agent-invocable and manual-only,
-  then reload Pi resources
+- `/toggle-skills` — make every discovered editable skill manual-only, then reload Pi resources
 - `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
 - `webfetch` and `websearch` — LLM-callable public web tools
+- `codex-fast-variants` — add optional Codex `-fast` models that use the priority tier
 - `continue-after-compaction` — automatically continue work after context compaction
 - `whimsical-working-message` — rotate playful status text while Pi is working
 - `herdr-agent-state` — report Pi activity to Herdr's agent-state UI
