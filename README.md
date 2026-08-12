@@ -20,6 +20,14 @@ guidance for agents editing `pi-config`.
 - `prompts/` — global prompt templates
 - `themes/` — custom themes
 
+## Shared skills
+
+Cross-harness skills are maintained in `~/Local/agent-skills` and installed globally with the Skills CLI. Pi discovers both universal installs in `~/.agents/skills` and Pi-specific installs in `~/.pi/agent/skills`. Keep their source in `agent-skills` rather than duplicating it here.
+
+```bash
+skills add ~/Local/agent-skills --global --agent pi --skill '*' --yes
+```
+
 ## Not managed here
 
 Never commit local runtime state or secrets:

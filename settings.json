@@ -1,6 +1,6 @@
 {
-  "defaultProvider": "openai-codex",
-  "defaultModel": "gpt-5.6-sol",
+  "defaultProvider": "xai",
+  "defaultModel": "grok-4.6",
   "defaultThinkingLevel": "high",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
@@ -15,5 +15,5 @@
   "packages": [
     "npm:@plannotator/pi-extension",
     "npm:pi-mcp-adapter"
-  ],
+  ]
 }
