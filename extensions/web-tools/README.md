@@ -1,13 +1,10 @@
 # web-tools
 
-Pi extension that registers two public-web tools:
+Pi extension that registers `webfetch` for fetching a public URL as Markdown,
+text, raw HTML, or an inline raster image. Web search is intentionally not
+registered; external integrations belong behind Executor.
 
-- `webfetch` — fetch one public URL as markdown, text, html, or an inline raster image
-- `websearch` — search the public web for current information and candidate URLs
-
-## Tools
-
-### `webfetch`
+## `webfetch`
 
 Parameters:
 
@@ -27,87 +24,21 @@ Current defaults:
 Behavior notes:
 
 - only `http://` and `https://` URLs are supported
-- URL userinfo credentials (`https://user:pass@example.com`) are rejected and redacted in diagnostics
+- URL userinfo credentials are rejected and redacted in diagnostics
 - private, local, reserved, and multicast addresses are blocked by default
-- DNS preflight failures are rejected instead of falling through to the network request
-- raster images (`png`, `jpeg`, `gif`, `webp`) are returned inline as images
-- HTML is converted to markdown or text when requested
+- DNS preflight failures are rejected instead of falling through to the request
+- raster images (`png`, `jpeg`, `gif`, `webp`) are returned inline
+- HTML is converted to Markdown or text when requested
 - binary content is rejected
-- if a site returns `403` with `cf-mitigated: challenge`, the tool retries with the fallback user agent
+- Cloudflare challenge responses retry with the fallback user agent
 
-### `websearch`
-
-Parameters:
-
-- `query` — required
-- `maxResults` — optional, clamped to `1..20`
-- `depth` — optional: `auto`, `fast`, `deep` (`deep` is accepted as a compatibility alias and mapped to `fast`)
-
-Current defaults:
-
-- `enabled`: `true`
-- `provider`: `exa`
-- `endpoint`: configured in `settings.ts`
-- `timeoutSeconds`: `25`
-- `defaultMaxResults`: `8`
-- `defaultDepth`: `auto`
-
-Behavior notes:
-
-- uses Exa's official MCP endpoint at `https://mcp.exa.ai/mcp`
-- Exa currently supports provider depths `auto` and `fast`; tool input `deep` is downgraded to `fast`
-- search responses are limited to `1 MB`
-- provider requests currently send:
-  - `livecrawl: "fallback"`
-  - `contextMaxCharacters: 2000`
-
-## Configuration
-
-The extension has an internal settings shape:
-
-```ts
-{
-  fetch: {
-    defaultFormat: "markdown" | "text" | "html";
-    timeoutSeconds: number;
-    maxResponseBytes: number;
-    blockPrivateHosts: boolean;
-    maxRedirects: number;
-    fallbackUserAgent: string;
-  };
-  search: {
-    enabled: boolean;
-    provider: "exa";
-    endpoint: PublicHttpUrl;
-    timeoutSeconds: number;
-    defaultMaxResults: number;
-    defaultDepth: "auto" | "fast" | "deep";
-  };
-}
-```
-
-But in the current implementation, these are hardcoded defaults in `settings.ts`.
-
-That means:
-
-- `webfetch.format` and `webfetch.timeout` can be overridden per call
-- `websearch.maxResults` and `websearch.depth` can be overridden per call
-- the underlying defaults are not currently exposed through Pi settings, extension settings, or env vars
-
-To change the defaults, edit:
-
-- `extensions/web-tools/settings.ts`
+The defaults are internal and not exposed through Pi settings. Callers can
+override `format` and `timeout` per request.
 
 ## Source of truth
 
 - extension entry: `extensions/web-tools/index.ts`
 - settings/defaults: `extensions/web-tools/settings.ts`
-- fetch Pi adapter: `extensions/web-tools/webfetch.ts`
+- Pi adapter: `extensions/web-tools/webfetch.ts`
 - fetch service: `extensions/web-tools/fetch-page.ts`
-- public web adapter: `extensions/web-tools/network.ts`
-- search Pi adapter: `extensions/web-tools/websearch.ts`
-- search service: `extensions/web-tools/search-web.ts`
-- Exa provider adapter: `extensions/web-tools/providers/exa.ts`
-- Exa protocol parser: `extensions/web-tools/providers/exa-protocol.ts`
-- Exa result parser: `extensions/web-tools/providers/exa-results.ts`
-- tool output projection: `extensions/web-tools/tool-output.ts`
+- public-web boundary: `extensions/web-tools/network.ts`

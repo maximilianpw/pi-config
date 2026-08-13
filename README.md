@@ -58,7 +58,7 @@ Never commit local runtime state or secrets:
 - `/save-md <name>` — save the latest assistant response as Markdown without overwriting
 - `/toggle-skills` — make every discovered editable skill manual-only, then reload Pi resources
 - `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
-- `webfetch` and `websearch` — LLM-callable public web tools
+- `webfetch` — hardened LLM-callable public URL fetching; web search integrations belong behind Executor
 - `codex-fast-variants` — add optional Codex `-fast` models that use the priority tier
 - `continue-after-compaction` — automatically continue work after context compaction
 - `whimsical-working-message` — rotate playful status text while Pi is working
