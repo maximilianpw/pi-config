@@ -15,6 +15,7 @@ guidance for agents editing `pi-config`.
 
 - `AGENTS.md` — repo-local agent instructions for working on this config repo
 - `settings.json` — Pi defaults
+- `mcp.json` — Pi-owned MCP server configuration; secrets stay in external stores
 - `APPEND_SYSTEM.md` — small Pi-only system-prompt nudge; larger Pi policy lives in `~/nix-config/users/maxpw/agents/pi/AGENTS.md`
 - `extensions/` — global Pi extensions
 - `prompts/` — global prompt templates
@@ -74,8 +75,10 @@ Never commit local runtime state or secrets:
 - `vcs-status-widget` — show current jj or Git change summary in the UI
 - `tps-tracker` — show first-chunk-adjusted tokens/sec while streaming without
   counting tool-call argument deltas
-- `mcp` and `mcpScript` — lazily discover and run tools from configured MCP
-  servers through `pi-mcp-adapter`, pinned to `2.21.1` for Pi `0.84.1`
+- `mcp` and `mcpScript` — lazily discover and run tools through the self-hosted
+  Executor MCP gateway using `pi-mcp-adapter`, pinned to `2.21.1` for Pi
+  `0.84.1`; integrations, credentials, and policies are managed centrally in
+  Executor
 
 Start directly in Plannotator plan mode with:
 

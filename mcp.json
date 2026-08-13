@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "executor": {
+      "url": "https://executor.liger-shilling.ts.net/mcp",
+      "auth": "oauth",
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 30000,
+      "directTools": false
+    }
+  }
+}
