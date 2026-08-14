@@ -17,6 +17,13 @@ export default function piSkillToggle(pi: ExtensionAPI) {
   const planner = new DefaultSkillTogglePlanner(fs, codec, patcher);
   const writer = new AtomicSkillChangeWriter(fs);
 
+  pi.on("session_start", (_event, ctx) => {
+    ctx.ui.setStatus(
+      "toggle-skills",
+      ctx.ui.theme.fg("accent", "Toggle Skills activated"),
+    );
+  });
+
   pi.registerCommand("toggle-skills", {
     description: "Make every discovered editable skill manual-only, then reload Pi resources",
     handler: async (_args, ctx) => {

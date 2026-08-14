@@ -33,6 +33,20 @@
         "typescript": "^5.9.2",
       },
     },
+    "extensions/executor": {
+      "name": "pi-executor-extension",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^26.1.1",
+        "tsx": "^4.20.5",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@earendil-works/pi-ai": "*",
+        "@earendil-works/pi-coding-agent": "*",
+        "typebox": "*",
+      },
+    },
     "extensions/linear": {
       "name": "pi-linear-extension",
       "version": "0.1.0",
@@ -668,6 +682,8 @@
     "pi-ask-user-extension": ["pi-ask-user-extension@workspace:extensions/ask-user"],
 
     "pi-codex-fast-variants-extension": ["pi-codex-fast-variants-extension@workspace:extensions/codex-fast-variants"],
+
+    "pi-executor-extension": ["pi-executor-extension@workspace:extensions/executor"],
 
     "pi-linear-extension": ["pi-linear-extension@workspace:extensions/linear"],
 
