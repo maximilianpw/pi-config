@@ -77,9 +77,8 @@ Never commit local runtime state or secrets:
   counting tool-call argument deltas
 - `mcp` and `mcpScript` — lazily discover and run tools through the self-hosted
   Executor MCP gateway using `pi-mcp-adapter`, pinned to `2.21.1` for Pi
-  `0.84.1`; Executor is the only remote MCP/API gateway, while device-local
-  capabilities stay local. See `~/nix-config/docs/executor-mcp-gateway.md` for
-  the integration and audit runbook.
+  `0.84.1`; integrations, credentials, and policies are managed centrally in
+  Executor
 
 Start directly in Plannotator plan mode with:
 
