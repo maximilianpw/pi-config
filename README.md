@@ -55,7 +55,7 @@ Never commit local runtime state or secrets:
 - `/plannotator-review` — review the current Git/JJ changes in Plannotator
 - `/plannotator-annotate <file>` and `/plannotator-last` — annotate Markdown or the latest response
 - `/save-md <name>` — save the latest assistant response as Markdown without overwriting
-- `/toggle-skills` — make every discovered editable skill manual-only, then reload Pi resources
+- `/toggle-skills` — toggle all editable skills between agent-invocable and manual-only, then reload Pi resources
 - `/cloak-status` — inspect secret-cloaking rules loaded from `cloak.json`
 - `webfetch` — hardened LLM-callable public URL fetching; web search integrations belong behind Executor
 - `codex-fast-variants` — add optional Codex `-fast` models that use the priority tier

@@ -20,12 +20,12 @@ function skill(name: string, mode: SkillRecord["mode"]): SkillRecord {
   };
 }
 
-function change(record: SkillRecord): SkillChange {
+function change(record: SkillRecord, to: SkillRecord["mode"] = "manual-only"): SkillChange {
   return {
     skill: record,
     filePath: record.filePath,
     from: record.mode,
-    to: "manual-only",
+    to,
     patch: { oldText: "before", newText: "after" },
   };
 }
@@ -45,7 +45,7 @@ function commandContext(notifications: Array<{ message: string; type: string | u
   } as unknown as ExtensionCommandContext;
 }
 
-test("toggle-skills makes every discovered skill manual-only without opening a picker", async () => {
+test("toggle-skills makes every editable skill manual-only when any are agent-invocable", async () => {
   const records = [skill("agent", "agent-invocable"), skill("manual", "manual-only")];
   let plannedDrafts: SkillDraft[] | undefined;
   let reloads = 0;
@@ -75,19 +75,49 @@ test("toggle-skills makes every discovered skill manual-only without opening a p
   assert.match(notifications[0]?.message ?? "", /made 1 skill manual-only/);
 });
 
-test("toggle-skills does not reload when every skill is already manual-only", async () => {
+test("toggle-skills makes every editable skill agent-invocable when all are manual-only", async () => {
+  const records = [skill("manual", "manual-only")];
+  let plannedDrafts: SkillDraft[] | undefined;
+  let reloads = 0;
+  const notifications: Array<{ message: string; type: string | undefined }> = [];
+  const deps: ToggleSkillsCommandDeps = {
+    inventory: { async load() { return records; } },
+    planner: {
+      async plan(_records, drafts) {
+        plannedDrafts = drafts;
+        return [change(records[0]!, "agent-invocable")];
+      },
+    },
+    writer: {
+      async apply(changes) {
+        return { applied: changes, skipped: [], errors: [] };
+      },
+    },
+  };
+
+  await runToggleSkillsCommand(commandContext(notifications, () => { reloads += 1; }), deps);
+
+  assert.deepEqual(plannedDrafts, [
+    { skill: records[0], desiredMode: "agent-invocable" },
+  ]);
+  assert.equal(reloads, 1);
+  assert.match(notifications[0]?.message ?? "", /made 1 skill agent-invocable/);
+});
+
+test("toggle-skills does not plan or reload when no discovered skills are editable", async () => {
+  const readonly = { ...skill("readonly", "manual-only"), editable: false };
   const notifications: Array<{ message: string; type: string | undefined }> = [];
   let reloads = 0;
   const deps: ToggleSkillsCommandDeps = {
-    inventory: { async load() { return [skill("manual", "manual-only")]; } },
+    inventory: { async load() { return [readonly]; } },
     planner: {
       async plan() {
-        return [];
+        throw new Error("planner must not run when there are no editable skills");
       },
     },
     writer: {
       async apply() {
-        throw new Error("writer must not run when there are no changes");
+        throw new Error("writer must not run when there are no editable skills");
       },
     },
   };
@@ -95,5 +125,5 @@ test("toggle-skills does not reload when every skill is already manual-only", as
   await runToggleSkillsCommand(commandContext(notifications, () => { reloads += 1; }), deps);
 
   assert.equal(reloads, 0);
-  assert.equal(notifications[0]?.message, "Pi Skill Toggle: all editable skills are already manual-only");
+  assert.equal(notifications[0]?.message, "Pi Skill Toggle: no editable skills found");
 });

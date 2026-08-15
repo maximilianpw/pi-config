@@ -1,6 +1,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { SkillTogglePlanner } from "./apply/planner.ts";
 import type { SkillChangeWriter } from "./apply/writer.ts";
+import { classifyEditableSkillSet } from "./inventory/classifier.ts";
 import type { SkillInventory } from "./inventory/loader.ts";
 import type { ApplyResult, SkillDraft } from "./types.ts";
 
@@ -10,7 +11,7 @@ export interface ToggleSkillsCommandDeps {
   writer: SkillChangeWriter;
 }
 
-/** Disable model invocation for every editable skill that Pi discovers, then reload resources. */
+/** Toggle every editable discovered skill between agent-invocable and manual-only, then reload resources. */
 export async function runToggleSkillsCommand(
   ctx: ExtensionCommandContext,
   deps: ToggleSkillsCommandDeps,
@@ -31,9 +32,16 @@ export async function runToggleSkillsCommand(
     return;
   }
 
+  const currentMode = classifyEditableSkillSet(skills);
+  if (currentMode === "none") {
+    ctx.ui.notify("Pi Skill Toggle: no editable skills found", "info");
+    return;
+  }
+
+  const desiredMode = currentMode === "manual-only" ? "agent-invocable" : "manual-only";
   const drafts: SkillDraft[] = skills.map((skill) => ({
     skill,
-    desiredMode: "manual-only",
+    desiredMode,
   }));
   let changes;
   try {
@@ -47,21 +55,21 @@ export async function runToggleSkillsCommand(
   }
 
   if (changes.length === 0) {
-    ctx.ui.notify("Pi Skill Toggle: all editable skills are already manual-only", "info");
+    ctx.ui.notify(`Pi Skill Toggle: all editable skills are already ${desiredMode}`, "info");
     return;
   }
 
   const applied = await deps.writer.apply(changes);
-  ctx.ui.notify(formatApplyResult(applied), applied.errors.length > 0 ? "warning" : "info");
+  ctx.ui.notify(formatApplyResult(applied, desiredMode), applied.errors.length > 0 ? "warning" : "info");
 
   if (applied.applied.length > 0) {
     await ctx.reload();
   }
 }
 
-function formatApplyResult(result: ApplyResult): string {
+function formatApplyResult(result: ApplyResult, desiredMode: SkillDraft["desiredMode"]): string {
   const lines = [
-    `Pi Skill Toggle made ${result.applied.length} skill${result.applied.length === 1 ? "" : "s"} manual-only.`,
+    `Pi Skill Toggle made ${result.applied.length} skill${result.applied.length === 1 ? "" : "s"} ${desiredMode}.`,
   ];
   if (result.errors.length > 0) {
     lines.push(`Errors/skipped: ${result.errors.length}`);
