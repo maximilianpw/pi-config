@@ -10,7 +10,8 @@
   "theme": "catppuccin-mocha",
   "lastChangelogVersion": "0.84.2",
   "enabledModels": [
-    "openai-codex/gpt-5.6-{sol,luna,terra}*"
+    "openai-codex/gpt-5.6-{sol,luna,terra}*",
+    "cursor/grok-4.6*"
   ],
   "packages": [
     "npm:@plannotator/pi-extension"

@@ -10,9 +10,7 @@
     "target": "ES2022"
   },
   "files": [
-    "extensions/continue-after-compaction.ts",
     "extensions/herdr-agent-state.ts",
-    "extensions/pi-cloak/index.ts",
     "extensions/safety-guard.ts",
     "extensions/whimsical-working-message.ts",
     "test/workflow-guards.test.ts"
