@@ -10,9 +10,11 @@
     "target": "ES2022"
   },
   "files": [
+    "extensions/cliproxyapi-models.ts",
     "extensions/herdr-agent-state.ts",
     "extensions/safety-guard.ts",
     "extensions/whimsical-working-message.ts",
+    "test/cliproxyapi-models.test.ts",
     "test/workflow-guards.test.ts"
   ]
 }
