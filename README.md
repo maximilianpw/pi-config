@@ -19,10 +19,6 @@ skills add ~/Local/agent-skills --global --agent pi --skill '*' --yes
 
 Do not commit `auth.json`, sessions, `.env`, or package caches.
 
-## Cursor models
-
-`extensions/cursor-selected-models` is a small provider built directly on `@cursor/sdk`. It publishes only Grok 4.6 plus explicit `:fast` and `:slow` variants. Authenticate with `/login` → Cursor or `CURSOR_API_KEY`.
-
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
 
 ## Apply

@@ -54,6 +54,8 @@ test("builds approval responses only from explicit decisions", () => {
       content: { confirmed: true },
     }),
     [
+      "--log-level",
+      "debug",
       "resume",
       "--execution-id",
       "exec_123",
@@ -69,7 +71,15 @@ test("builds approval responses only from explicit decisions", () => {
       executionId: "exec_123",
       decision: "decline",
     }),
-    ["resume", "--execution-id", "exec_123", "--action", "decline"],
+    [
+      "--log-level",
+      "debug",
+      "resume",
+      "--execution-id",
+      "exec_123",
+      "--action",
+      "decline",
+    ],
   );
 });
 

@@ -10,8 +10,10 @@
   "theme": "catppuccin-mocha",
   "lastChangelogVersion": "0.84.2",
   "enabledModels": [
-    "cliproxyapi/*",
-    "cursor/grok-4.6*"
+    "cliproxyapi/gpt-5.6-luna",
+    "cliproxyapi/gpt-5.6-sol",
+    "cliproxyapi/gpt-5.6-terra",
+    "cliproxyapi/grok-4.6"
   ],
   "packages": [
     "npm:@plannotator/pi-extension"

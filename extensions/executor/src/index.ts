@@ -13,6 +13,7 @@ import {
 import { Type, type Static } from "typebox";
 
 import { buildExecutorArgs } from "./command.ts";
+import { formatExecutorFailure } from "./failure.ts";
 
 const executorSchema = Type.Object({
   action: StringEnum(["search", "describe", "integrations", "call", "resume"] as const, {
@@ -60,12 +61,6 @@ const progressMessages: Record<ExecutorToolInput["action"], string> = {
   resume: "Resuming Executor execution...",
 };
 
-function failureMessage(stdout: string, stderr: string, code: number | null): string {
-  const message = [stderr.trim(), stdout.trim()].filter(Boolean).join("\n");
-  const bounded = message.length > 8_000 ? `${message.slice(0, 8_000)}…` : message;
-  return bounded || `executor exited with code ${code ?? "unknown"}`;
-}
-
 export default function executorExtension(pi: ExtensionAPI): void {
   const tempDirectories = new Set<string>();
 
@@ -108,7 +103,7 @@ export default function executorExtension(pi: ExtensionAPI): void {
         timeout: 60_000,
       });
       if (result.code !== 0) {
-        throw new Error(failureMessage(result.stdout, result.stderr, result.code));
+        throw new Error(formatExecutorFailure(result.stdout, result.stderr, result.code));
       }
 
       const output = result.stderr.trim()

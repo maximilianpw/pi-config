@@ -47,6 +47,8 @@ export function buildExecutorArgs(input: ExecutorInput): string[] {
       const executionId = required(input.executionId, "executionId", input.action);
       if (!input.decision) throw new Error("Executor resume requires `decision`");
       const args = [
+        "--log-level",
+        "debug",
         "resume",
         "--execution-id",
         executionId,
