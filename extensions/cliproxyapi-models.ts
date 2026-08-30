@@ -1,4 +1,13 @@
-import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
+import type {
+	Api,
+	AssistantMessageEventStream,
+	Context,
+	Model,
+	ModelThinkingLevel,
+	SimpleStreamOptions,
+	ThinkingLevelMap,
+} from "@earendil-works/pi-ai";
+import { streamSimple as streamSimpleByApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import {
 	CLIPROXYAPI_API_KEY as API_KEY,
@@ -175,6 +184,27 @@ export function rewriteCLIProxyAPIFastRequest(payload: unknown, modelId: string)
 	};
 }
 
+/** Apply the Fast Mode alias rewrite to normal turns, compaction, and branch summaries. */
+export function createCLIProxyAPIFastStream(): (
+	model: Model<Api>,
+	context: Context,
+	options?: SimpleStreamOptions,
+) => AssistantMessageEventStream {
+	return (model, context, options = {}) => {
+		const callerOnPayload = options.onPayload;
+		return streamSimpleByApi(model, context, {
+			...options,
+			onPayload: async (payload, requestModel) => {
+				const transformed = await callerOnPayload?.(payload, requestModel);
+				return rewriteCLIProxyAPIFastRequest(
+					transformed === undefined ? payload : transformed,
+					model.id,
+				);
+			},
+		});
+	};
+}
+
 function fallbackModel(
 	id: string,
 	name: string,
@@ -238,10 +268,6 @@ export default async function cliProxyAPIModels(pi: ExtensionAPI): Promise<void>
 		apiKey: API_KEY,
 		api: API,
 		models,
-	});
-
-	pi.on("before_provider_request", (event, context) => {
-		if (context.model?.provider !== PROVIDER_ID) return;
-		return rewriteCLIProxyAPIFastRequest(event.payload, context.model.id);
+		streamSimple: createCLIProxyAPIFastStream(),
 	});
 }

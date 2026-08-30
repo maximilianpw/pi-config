@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createAssistantMessageEventStream,
+	getModels,
+	registerApiProvider,
+	resetApiProviders,
+	streamSimple as streamSimpleByApi,
+} from "@earendil-works/pi-ai/compat";
+import {
+	generateSummaryWithUsage,
+	type ExtensionAPI,
+	type ProviderConfig,
+} from "@earendil-works/pi-coding-agent";
+import cliProxyAPIModels, {
 	addSolFastVariant,
 	parseCLIProxyAPICatalog,
 	parseCLIProxyAPIReasoningCatalog,
@@ -107,6 +119,131 @@ test("rewrites Sol Fast requests to the priority service tier", () => {
 		() => rewriteCLIProxyAPIFastRequest("invalid", "gpt-5.6-sol-fast"),
 		/payload must be an object/,
 	);
+});
+
+test("compaction rewrites Sol Fast to the upstream model and priority tier", async () => {
+	let providerConfig: ProviderConfig | undefined;
+	const recordingApi = {
+		registerProvider(_providerName: string, config: ProviderConfig) {
+			providerConfig = config;
+		},
+	};
+	// SAFETY: The extension uses only registerProvider; this recording API supplies that operation.
+	const pi = recordingApi as unknown as ExtensionAPI;
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = async (input) => {
+		const url = String(input);
+		return Response.json(
+			url.includes("client_version=pi")
+				? {
+					models: [{
+						slug: "gpt-5.6-sol",
+						display_name: "GPT 5.6 Sol",
+						visibility: "list",
+						supported_in_api: true,
+					}],
+				}
+				: { data: [{ id: "gpt-5.6-sol", reasoning_efforts: [{ value: "high" }] }] },
+		);
+	};
+	try {
+		await cliProxyAPIModels(pi);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+
+	assert.ok(providerConfig);
+	const baseModel = getModels("openai")[0];
+	assert.ok(baseModel);
+	const fastModel = {
+		...baseModel,
+		provider: "cliproxyapi",
+		id: "gpt-5.6-sol-fast",
+		name: "GPT 5.6 Sol via CLIProxyAPI (Fast)",
+	};
+	const streamFn = providerConfig.streamSimple ?? streamSimpleByApi;
+	let observedPayload: Readonly<Record<string, unknown>> | undefined;
+	const fakeOpenAIStream = (model: typeof fastModel, _context: unknown, options: {
+		readonly onPayload?: (payload: unknown, model: typeof fastModel) => unknown;
+	} = {}) => {
+		const stream = createAssistantMessageEventStream();
+		void (async () => {
+			const initialPayload = { model: model.id };
+			const transformed = await options.onPayload?.(initialPayload, model) ?? initialPayload;
+			assert.equal(typeof transformed, "object");
+			assert.ok(transformed);
+			observedPayload = transformed as Readonly<Record<string, unknown>>;
+			const usage = {
+				input: 1,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 2,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			};
+			if (observedPayload.model === fastModel.id) {
+				stream.push({
+					type: "error",
+					reason: "error",
+					error: {
+						role: "assistant",
+						content: [],
+						api: model.api,
+						provider: model.provider,
+						model: model.id,
+						usage,
+						stopReason: "error",
+						errorMessage: "unknown provider for model gpt-5.6-sol-fast",
+						timestamp: 2,
+					},
+				});
+			} else {
+				stream.push({
+					type: "done",
+					reason: "stop",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "summary" }],
+						api: model.api,
+						provider: model.provider,
+						model: model.id,
+						usage,
+						stopReason: "stop",
+						timestamp: 2,
+					},
+				});
+			}
+			stream.end();
+		})();
+		return stream;
+	};
+	// SAFETY: The fake implements the provider stream contract used by the compaction helper.
+	const streamOpenAI = fakeOpenAIStream as Parameters<typeof registerApiProvider>[0]["streamSimple"];
+	registerApiProvider({
+		api: "openai-responses",
+		stream: streamOpenAI,
+		streamSimple: streamOpenAI,
+	}, "cliproxyapi-fast-compaction-test");
+	try {
+		const result = await generateSummaryWithUsage(
+			[{ role: "user", content: "Summarize this", timestamp: 1 }],
+			fastModel,
+			1_000,
+			"test-key",
+			undefined,
+			new AbortController().signal,
+			undefined,
+			undefined,
+			"off",
+			streamFn,
+		);
+
+		assert.equal(result.text, "summary");
+		assert.equal(observedPayload?.model, "gpt-5.6-sol");
+		assert.equal(observedPayload?.service_tier, "priority");
+	} finally {
+		resetApiProviders();
+	}
 });
 
 test("rejects malformed or empty CLIProxyAPI catalog responses", () => {
