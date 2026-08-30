@@ -10,12 +10,17 @@
     "target": "ES2022"
   },
   "files": [
+    "cli/cliproxyapi-quota.ts",
+    "cli/cliproxyapi-util.ts",
     "extensions/cliproxyapi-models.ts",
+    "extensions/cliproxyapi-usage.ts",
+    "extensions/cliproxyapi/client.ts",
     "extensions/herdr-agent-state.ts",
     "extensions/safety-guard.ts",
     "extensions/tps-tracker.ts",
     "extensions/whimsical-working-message.ts",
     "test/cliproxyapi-models.test.ts",
+    "test/cliproxyapi-usage.test.ts",
     "test/tps-tracker.test.ts",
     "test/workflow-guards.test.ts"
   ]

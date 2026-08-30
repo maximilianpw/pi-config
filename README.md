@@ -7,6 +7,7 @@ Agent policy lives in `~/nix-config`: shared rules in `users/maxpw/agents/shared
 ## Layout
 
 - `settings.json` — Pi defaults, enabled models, and installed Pi packages
+- `cli/` — command-line entry points installed by Home Manager, including `cliproxyapi-util quota`
 - `extensions/` — global Pi extensions; each package or `.ts` file is the source of truth for the commands and tools it registers
 - `prompts/` — prompt templates
 - `themes/` — TUI themes

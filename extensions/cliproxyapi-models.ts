@@ -1,12 +1,17 @@
 import type { ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+import {
+	CLIPROXYAPI_API_KEY as API_KEY,
+	CLIPROXYAPI_BASE_URL as BASE_URL,
+	CLIPROXYAPI_PROVIDER_ID as PROVIDER_ID,
+} from "./cliproxyapi/client.ts";
 
-const PROVIDER_ID = "cliproxyapi";
-const BASE_URL = "http://127.0.0.1:8317/v1";
 const MODELS_URL = `${BASE_URL}/models`;
 const CODEX_MODELS_URL = `${MODELS_URL}?client_version=pi`;
-const API_KEY = "cliproxyapi-local-claudex";
 const API = "openai-responses";
+const SOL_MODEL_ID = "gpt-5.6-sol";
+const SOL_FAST_MODEL_ID = `${SOL_MODEL_ID}-fast`;
+const PRIORITY_SERVICE_TIER = "priority";
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const THINKING_LEVELS: readonly Exclude<ModelThinkingLevel, "off">[] = [
 	"minimal",
@@ -148,6 +153,28 @@ export function toProviderModel(model: CLIProxyAPICatalogModel): ProviderModelCo
 	};
 }
 
+export function addSolFastVariant(
+	models: readonly ProviderModelConfig[],
+): ProviderModelConfig[] {
+	const modelIds = new Set(models.map((model) => model.id));
+	return models.flatMap((model) => {
+		if (model.id !== SOL_MODEL_ID || modelIds.has(SOL_FAST_MODEL_ID)) return [model];
+		return [model, { ...model, id: SOL_FAST_MODEL_ID, name: `${model.name} (Fast)` }];
+	});
+}
+
+export function rewriteCLIProxyAPIFastRequest(payload: unknown, modelId: string): unknown {
+	if (modelId !== SOL_FAST_MODEL_ID) return payload;
+	if (!isRecord(payload)) {
+		throw new Error("CLIProxyAPI Fast Mode request payload must be an object");
+	}
+	return {
+		...payload,
+		model: SOL_MODEL_ID,
+		service_tier: PRIORITY_SERVICE_TIER,
+	};
+}
+
 function fallbackModel(
 	id: string,
 	name: string,
@@ -165,12 +192,12 @@ function fallbackModel(
 	});
 }
 
-const FALLBACK_MODELS = [
-	fallbackModel("gpt-5.6-sol", "GPT 5.6 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
+const FALLBACK_MODELS = addSolFastVariant([
+	fallbackModel(SOL_MODEL_ID, "GPT 5.6 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-5.6-luna", "GPT 5.6 Luna", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-5.6-terra", "GPT 5.6 Terra", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("grok-4.6", "Grok 4.6", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
-];
+]);
 
 async function fetchCatalog(url: string, headers: Record<string, string>, signal: AbortSignal): Promise<unknown> {
 	const response = await fetch(url, { headers, signal });
@@ -190,7 +217,9 @@ async function fetchModels(signal: AbortSignal): Promise<ProviderModelConfig[]> 
 		fetchCatalog(MODELS_URL, { ...headers, "user-agent": "grok-shell/pi" }, signal),
 	]);
 	const reasoningCatalog = parseCLIProxyAPIReasoningCatalog(reasoningPayload);
-	return parseCLIProxyAPICatalog(catalogPayload, reasoningCatalog).map(toProviderModel);
+	return addSolFastVariant(
+		parseCLIProxyAPICatalog(catalogPayload, reasoningCatalog).map(toProviderModel),
+	);
 }
 
 export default async function cliProxyAPIModels(pi: ExtensionAPI): Promise<void> {
@@ -209,5 +238,10 @@ export default async function cliProxyAPIModels(pi: ExtensionAPI): Promise<void>
 		apiKey: API_KEY,
 		api: API,
 		models,
+	});
+
+	pi.on("before_provider_request", (event, context) => {
+		if (context.model?.provider !== PROVIDER_ID) return;
+		return rewriteCLIProxyAPIFastRequest(event.payload, context.model.id);
 	});
 }

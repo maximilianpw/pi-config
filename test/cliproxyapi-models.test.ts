@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	addSolFastVariant,
 	parseCLIProxyAPICatalog,
 	parseCLIProxyAPIReasoningCatalog,
+	rewriteCLIProxyAPIFastRequest,
 	toProviderModel,
 } from "../extensions/cliproxyapi-models.ts";
 
@@ -63,6 +65,47 @@ test("parses, deduplicates, and sorts visible CLIProxyAPI inference models", () 
 				maxTokens: 65_536,
 			},
 		],
+	);
+});
+
+test("adds a Fast Mode variant for Sol only", () => {
+	const models = addSolFastVariant(
+		parseCLIProxyAPICatalog(
+			{
+				models: [
+					{
+						slug: "gpt-5.6-sol",
+						display_name: "GPT 5.6 Sol",
+						visibility: "list",
+					},
+					{
+						slug: "gpt-5.6-terra",
+						display_name: "GPT 5.6 Terra",
+						visibility: "list",
+					},
+				],
+			},
+			reasoningCatalog,
+		).map(toProviderModel),
+	);
+	assert.deepEqual(
+		models.map((model) => model.id),
+		["gpt-5.6-sol", "gpt-5.6-sol-fast", "gpt-5.6-terra"],
+	);
+	assert.equal(models[1]?.name, "GPT 5.6 Sol via CLIProxyAPI (Fast)");
+});
+
+test("rewrites Sol Fast requests to the priority service tier", () => {
+	const payload = { model: "gpt-5.6-sol-fast", input: "hello" };
+	assert.deepEqual(rewriteCLIProxyAPIFastRequest(payload, "gpt-5.6-sol-fast"), {
+		model: "gpt-5.6-sol",
+		input: "hello",
+		service_tier: "priority",
+	});
+	assert.equal(rewriteCLIProxyAPIFastRequest(payload, "gpt-5.6-sol"), payload);
+	assert.throws(
+		() => rewriteCLIProxyAPIFastRequest("invalid", "gpt-5.6-sol-fast"),
+		/payload must be an object/,
 	);
 });
 
