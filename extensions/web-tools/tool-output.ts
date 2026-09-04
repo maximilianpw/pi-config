@@ -7,10 +7,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { FetchPageResult } from "./fetch-page.ts";
 import { err, ok, type Result } from "./result.ts";
-import type { SearchWebResult } from "./search-web.ts";
 import { writeTempTextFile } from "./temp.ts";
-import type { SearchDepth, SearchProviderName, WebFetchFormat } from "./types.ts";
-import type { NormalizedSearchResult } from "./providers/types.ts";
+import type { WebFetchFormat } from "./types.ts";
 
 export interface ToolOutputStore {
 	writeTextFile(prefix: string, fileName: string, content: string): Promise<Result<string, ToolOutputStoreError>>;
@@ -50,17 +48,6 @@ export interface WebFetchDetails {
 	readonly image?: boolean;
 	readonly truncated?: boolean;
 	readonly fullOutputPath?: string;
-}
-
-export interface WebSearchDetails {
-	readonly query: string;
-	readonly depth: SearchDepth;
-	readonly maxResults: number;
-	readonly provider: SearchProviderName;
-	readonly resultCount: number;
-	readonly truncated?: boolean;
-	readonly fullOutputPath?: string;
-	readonly results: readonly NormalizedSearchResult[];
 }
 
 interface ProjectedTextOutput {
@@ -119,63 +106,6 @@ export async function projectFetchPageResultToPiToolResult(
 			fullOutputPath: truncated.value.fullOutputPath,
 		},
 	});
-}
-
-/** Project a search-web service result to a Pi tool result with truncation protection. */
-export async function projectSearchWebResultToPiToolResult(
-	result: SearchWebResult,
-	store: ToolOutputStore,
-): Promise<Result<PiToolResult<WebSearchDetails>, ToolOutputStoreError>> {
-	const output = formatSearchResults(result.query, result.results);
-	const truncated = await projectTextOutput(output, {
-		store,
-		tempPrefix: "pi-websearch-",
-		fileName: "output.txt",
-	});
-	if (truncated._tag === "err") {
-		return truncated;
-	}
-
-	return ok({
-		content: [textContent(truncated.value.text)],
-		details: {
-			query: result.query,
-			depth: result.depth,
-			maxResults: result.maxResults,
-			provider: result.provider,
-			resultCount: result.results.length,
-			truncated: truncated.value.truncated,
-			fullOutputPath: truncated.value.fullOutputPath,
-			results: result.results,
-		},
-	});
-}
-
-/** Format normalized search results as URL-forward text for LLM consumption. */
-export function formatSearchResults(query: string, results: readonly NormalizedSearchResult[]): string {
-	if (results.length === 0) {
-		return `Search results for: ${query}\n\nNo results found.`;
-	}
-
-	const lines = [`Search results for: ${query}`, ""];
-	for (const [index, result] of results.entries()) {
-		lines.push(`${index + 1}. ${result.title}`);
-		lines.push(`   URL: ${result.url}`);
-		if (result.publishedAt) {
-			lines.push(`   Published: ${result.publishedAt}`);
-		}
-		if (result.source) {
-			lines.push(`   Source: ${result.source}`);
-		}
-		if (typeof result.score === "number") {
-			lines.push(`   Score: ${result.score}`);
-		}
-		if (result.snippet) {
-			lines.push(`   Snippet: ${result.snippet}`);
-		}
-		lines.push("");
-	}
-	return lines.join("\n").trimEnd();
 }
 
 async function projectTextOutput(

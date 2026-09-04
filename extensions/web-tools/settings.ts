@@ -1,32 +1,14 @@
 import {
-	parsePublicHttpUrl,
-	type PublicHttpUrl,
-	type SearchDepth,
-	type SearchProviderName,
 	type WebFetchFormat,
 	type WebToolsSettings,
 } from "./types.ts";
 
 export const WEB_FETCH_FORMATS = ["markdown", "text", "html"] as const satisfies readonly WebFetchFormat[];
-export const SEARCH_DEPTHS = ["auto", "fast", "deep"] as const satisfies readonly SearchDepth[];
-export const SEARCH_PROVIDERS = ["exa"] as const satisfies readonly SearchProviderName[];
 
 export const FETCH_TIMEOUT_SECONDS = {
 	default: 30,
 	min: 1,
 	max: 120,
-} as const;
-
-export const SEARCH_TIMEOUT_SECONDS = {
-	default: 25,
-	min: 1,
-	max: 120,
-} as const;
-
-export const SEARCH_MAX_RESULTS = {
-	default: 8,
-	min: 1,
-	max: 20,
 } as const;
 
 export const FETCH_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
@@ -44,12 +26,6 @@ const DEFAULTS = {
 	fetchBlockPrivateHosts: true,
 	fetchMaxRedirects: FETCH_MAX_REDIRECTS,
 	fetchFallbackUserAgent: "opencode",
-	searchEnabled: true,
-	searchProvider: "exa",
-	searchEndpoint: "https://mcp.exa.ai/mcp",
-	searchTimeoutSeconds: SEARCH_TIMEOUT_SECONDS.default,
-	searchDefaultMaxResults: SEARCH_MAX_RESULTS.default,
-	searchDefaultDepth: "auto",
 } as const;
 
 /** Clamp a finite number to an inclusive integer range. */
@@ -105,21 +81,5 @@ export function getWebToolsSettings(): WebToolsSettings {
 			maxRedirects: DEFAULTS.fetchMaxRedirects,
 			fallbackUserAgent: DEFAULTS.fetchFallbackUserAgent,
 		},
-		search: {
-			enabled: DEFAULTS.searchEnabled,
-			provider: DEFAULTS.searchProvider,
-			endpoint: mustParsePublicHttpUrl(DEFAULTS.searchEndpoint),
-			timeoutSeconds: DEFAULTS.searchTimeoutSeconds,
-			defaultMaxResults: DEFAULTS.searchDefaultMaxResults,
-			defaultDepth: DEFAULTS.searchDefaultDepth,
-		},
 	};
-}
-
-function mustParsePublicHttpUrl(input: string): PublicHttpUrl {
-	const parsed = parsePublicHttpUrl(input);
-	if (parsed._tag === "err") {
-		throw new Error("Invalid hardcoded web-tools search endpoint");
-	}
-	return parsed.value;
 }

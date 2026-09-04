@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { ok, type Result } from "../result.ts";
 import {
-	projectSearchWebResultToPiToolResult,
+	projectFetchPageResultToPiToolResult,
 	type ToolOutputStore,
 	type ToolOutputStoreError,
 } from "../tool-output.ts";
-import { parsePublicHttpUrl, parseSearchQuery } from "../types.ts";
+import { parsePublicHttpUrl } from "../types.ts";
 
 class RecordingToolOutputStore implements ToolOutputStore {
 	readonly writes: Array<{ readonly prefix: string; readonly fileName: string; readonly content: string }> = [];
@@ -23,24 +23,25 @@ class RecordingToolOutputStore implements ToolOutputStore {
 	}
 }
 
-test("projectSearchWebResultToPiToolResult truncates and records full output path", async () => {
-	const query = parseSearchQuery("example");
+test("projectFetchPageResultToPiToolResult truncates and records full output path", async () => {
 	const url = parsePublicHttpUrl("https://example.com/");
-	assert.equal(query._tag, "ok");
 	assert.equal(url._tag, "ok");
 	const store = new RecordingToolOutputStore("/tmp/full-output.txt");
+	const text = Array.from({ length: 3_000 }, (_, index) => `Documentation line ${index + 1}`).join("\n");
 
-	const result = await projectSearchWebResultToPiToolResult(
+	const result = await projectFetchPageResultToPiToolResult(
 		{
-			query: query.value,
-			depth: "auto",
-			maxResults: 8,
-			provider: "exa",
-			results: Array.from({ length: 200 }, (_, index) => ({
-				title: `Example ${index + 1}`,
-				url: url.value,
-				snippet: "Documentation-safe example domain.".repeat(20),
-			})),
+			_tag: "Text",
+			requestedUrl: url.value,
+			finalUrl: url.value,
+			format: "markdown",
+			status: 200,
+			mime: "text/markdown",
+			contentType: "text/markdown; charset=utf-8",
+			charset: "utf-8",
+			decoder: "utf-8",
+			bytes: Buffer.byteLength(text),
+			text,
 		},
 		store,
 	);
@@ -50,4 +51,5 @@ test("projectSearchWebResultToPiToolResult truncates and records full output pat
 	assert.equal(result.value.details.fullOutputPath, "/tmp/full-output.txt");
 	assert.match(result.value.content[0]?.type === "text" ? result.value.content[0].text : "", /Output truncated/);
 	assert.equal(store.writes.length, 1);
+	assert.equal(store.writes[0]?.prefix, "pi-webfetch-");
 });

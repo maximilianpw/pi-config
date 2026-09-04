@@ -27,6 +27,13 @@ test("parseEnumSetting validates allowed values", () => {
 	assert.equal(parseEnumSetting(undefined, ["markdown", "text", "html"], "text"), "text");
 });
 
-test("web search uses Exa's official MCP endpoint", () => {
-	assert.equal(getWebToolsSettings().search.endpoint, "https://mcp.exa.ai/mcp");
+test("web fetch uses the documented safe defaults", () => {
+	assert.deepEqual(getWebToolsSettings().fetch, {
+		defaultFormat: "markdown",
+		timeoutSeconds: 30,
+		maxResponseBytes: 5 * 1024 * 1024,
+		blockPrivateHosts: true,
+		maxRedirects: 5,
+		fallbackUserAgent: "opencode",
+	});
 });
