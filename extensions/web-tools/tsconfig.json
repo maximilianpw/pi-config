@@ -16,9 +16,7 @@
     "./redacted.ts",
     "./types.ts",
     "./webfetch-input.ts",
-    "./websearch-input.ts",
     "./fetch-page.ts",
-    "./search-web.ts",
     "./vendor.d.ts",
     "./public-web-client.ts",
     "./network.ts",
@@ -28,8 +26,6 @@
     "./render.ts",
     "./tool-output.ts",
     "./webfetch.ts",
-    "./websearch.ts",
-    "./providers/**/*.ts",
     "./test/**/*.ts"
   ]
 }
