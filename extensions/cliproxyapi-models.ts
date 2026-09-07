@@ -226,6 +226,7 @@ const FALLBACK_MODELS = addSolFastVariant([
 	fallbackModel(SOL_MODEL_ID, "GPT 5.6 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-5.6-luna", "GPT 5.6 Luna", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-5.6-terra", "GPT 5.6 Terra", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
+	fallbackModel("gpt-6-astra", "GPT 6.0 Astra", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("grok-4.6", "Grok 4.6", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
 ]);
 

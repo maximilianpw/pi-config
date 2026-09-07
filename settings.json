@@ -1,20 +1,19 @@
 {
   "defaultProvider": "cliproxyapi",
-  "defaultModel": "gpt-5.6-sol-fast",
-  "defaultThinkingLevel": "high",
+  "defaultModel": "gpt-6-astra",
+  "defaultThinkingLevel": "medium",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "steeringMode": "all",
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-mocha",
-  "lastChangelogVersion": "0.84.3",
+  "lastChangelogVersion": "0.85.1",
   "enabledModels": [
     "cliproxyapi/gpt-5.6-luna",
     "cliproxyapi/gpt-5.6-sol",
-    "cliproxyapi/gpt-5.6-terra",
-    "cliproxyapi/grok-4.6",
-    "cliproxyapi/gpt-5.6-sol-fast"
+    "cliproxyapi/gpt-6-astra",
+    "cliproxyapi/grok-4.6"
   ],
   "packages": [
     "npm:@plannotator/pi-extension",

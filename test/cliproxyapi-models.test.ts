@@ -107,6 +107,44 @@ test("adds a Fast Mode variant for Sol only", () => {
 	assert.equal(models[1]?.name, "GPT 5.6 Sol via CLIProxyAPI (Fast)");
 });
 
+test("uses Astra from the fallback catalog when discovery fails", async () => {
+	let providerConfig: ProviderConfig | undefined;
+	const recordingApi = {
+		registerProvider(_providerName: string, config: ProviderConfig) {
+			providerConfig = config;
+		},
+	};
+	// SAFETY: The extension uses only registerProvider; this recording API supplies that operation.
+	const pi = recordingApi as unknown as ExtensionAPI;
+	const originalFetch = globalThis.fetch;
+	const originalWarn = console.warn;
+	globalThis.fetch = async () => {
+		throw new Error("offline");
+	};
+	console.warn = () => {};
+	try {
+		await cliProxyAPIModels(pi);
+	} finally {
+		globalThis.fetch = originalFetch;
+		console.warn = originalWarn;
+	}
+
+	assert.ok(providerConfig);
+	const astra = providerConfig.models?.find((model) => model.id === "gpt-6-astra");
+	assert.ok(astra);
+	assert.equal(astra.name, "GPT 6.0 Astra via CLIProxyAPI");
+	assert.equal(astra.contextWindow, 272_000);
+	assert.equal(astra.maxTokens, 128_000);
+	assert.deepEqual(astra.thinkingLevelMap, {
+		minimal: null,
+		low: "low",
+		medium: "medium",
+		high: "high",
+		xhigh: "xhigh",
+		max: "max",
+	});
+});
+
 test("rewrites Sol Fast requests to the priority service tier", () => {
 	const payload = { model: "gpt-5.6-sol-fast", input: "hello" };
 	assert.deepEqual(rewriteCLIProxyAPIFastRequest(payload, "gpt-5.6-sol-fast"), {
