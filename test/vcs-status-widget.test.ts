@@ -60,7 +60,6 @@ test("coalesces overlapping refreshes into one trailing run with the latest cont
 
   const second = coordinator.request(context("/second"));
   const latest = coordinator.request(context("/latest"));
-  coordinator.tick();
   assert.deepEqual(calls, ["/first"]);
 
   batches[0]!.resolve();
@@ -75,7 +74,7 @@ test("coalesces overlapping refreshes into one trailing run with the latest cont
   assert.equal(maxConcurrent, 1);
 });
 
-test("a waiting handler completes with its batch even when another tick is queued", async () => {
+test("a waiting handler completes with its coalesced trailing batch", async () => {
   const batches: Array<ReturnType<typeof deferred<void>>> = [];
   const coordinator = createRefreshCoordinator(async () => {
     const batch = deferred<void>();
@@ -90,12 +89,9 @@ test("a waiting handler completes with its batch even when another tick is queue
   batches[0]!.resolve();
   await first;
   await nextMicrotask();
-  coordinator.tick();
   batches[1]!.resolve();
   await handler;
-  await nextMicrotask();
-  assert.equal(batches.length, 3);
-  batches[2]!.resolve();
+  assert.equal(batches.length, 2);
 });
 
 test("stop releases active and queued callers without allowing restart overlap", async () => {
@@ -143,20 +139,18 @@ test("stop and restart invalidate old work and suppress post-shutdown writes", a
       ctx.cwd === "/old" ? oldSummary.promise : newSummary.promise,
     ),
   );
-  const oldEpoch = coordinator.activate(oldContext);
+  coordinator.activate(oldContext);
   const oldRequest = coordinator.request(oldContext);
   await nextMicrotask();
   coordinator.stop();
-  assert.equal(coordinator.isActive(oldEpoch), false);
 
   const newContext = context("/new", writes);
-  const newEpoch = coordinator.activate(newContext);
+  coordinator.activate(newContext);
   const newRequest = coordinator.request(newContext);
   oldSummary.resolve("stale");
   await oldRequest;
   await nextMicrotask();
   assert.deepEqual(writes, []);
-  assert.equal(coordinator.isActive(newEpoch), true);
 
   newSummary.resolve("current");
   await newRequest;
@@ -220,7 +214,7 @@ test("getSummary waits for sibling probes to settle after one fails", async () =
   await assert.rejects(summary, /status failed/);
 });
 
-test("shutdown during startup prevents late writes and interval resurrection", async () => {
+test("shutdown during startup prevents late writes", async () => {
   const handlers = new Map<string, (...args: any[]) => any>();
   const pi = {
     on(name: string, handler: (...args: any[]) => any) {
@@ -228,17 +222,7 @@ test("shutdown during startup prevents late writes and interval resurrection", a
     },
   } as unknown as ExtensionAPI;
   const summary = deferred<string | undefined>();
-  let intervalsStarted = 0;
-  const extension = createVcsStatusWidget({
-    summarize: () => summary.promise,
-    setInterval: ((handler: (...args: any[]) => void, timeout?: number) => {
-      void handler;
-      assert.equal(timeout, 2_000);
-      intervalsStarted += 1;
-      return {} as NodeJS.Timeout;
-    }) as unknown as typeof setInterval,
-  });
-  extension(pi);
+  createVcsStatusWidget({ summarize: () => summary.promise })(pi);
 
   const writes: Array<string[] | undefined> = [];
   const ctx = context("/repo", writes);
@@ -248,7 +232,6 @@ test("shutdown during startup prevents late writes and interval resurrection", a
   summary.resolve("late");
   await startup;
 
-  assert.equal(intervalsStarted, 0);
   assert.deepEqual(writes, [undefined]);
 });
 

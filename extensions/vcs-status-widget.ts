@@ -4,7 +4,6 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 
 const execFileAsync = promisify(execFile);
 const WIDGET_ID = "vcs-status-widget";
-const UPDATE_INTERVAL_MS = 2_000;
 
 export type RunVcsCommand = (command: string, args: string[], cwd: string) => Promise<string>;
 
@@ -175,12 +174,6 @@ export function createRefreshCoordinator(refresh: Refresh) {
     request(ctx: ExtensionContext) {
       return enqueue(ctx, true);
     },
-    tick() {
-      void enqueue(undefined, false);
-    },
-    isActive(sessionEpoch: number) {
-      return active && epoch === sessionEpoch;
-    },
     stop() {
       active = false;
       epoch += 1;
@@ -194,42 +187,30 @@ export function createRefreshCoordinator(refresh: Refresh) {
 
 export interface VcsStatusWidgetOptions {
   summarize?: (cwd: string) => Promise<string | undefined>;
-  setInterval?: typeof setInterval;
-  clearInterval?: typeof clearInterval;
 }
 
 export function createVcsStatusWidget(options: VcsStatusWidgetOptions = {}) {
   const summarize = options.summarize ?? getSummary;
-  const setIntervalFn = options.setInterval ?? setInterval;
-  const clearIntervalFn = options.clearInterval ?? clearInterval;
 
   return function vcsStatusWidget(pi: ExtensionAPI) {
-    let interval: NodeJS.Timeout | undefined;
     const refresh = createRefreshCoordinator((ctx, isCurrent) => updateWidget(ctx, isCurrent, summarize));
 
     pi.on("session_start", async (_event, ctx) => {
-      if (interval) clearIntervalFn(interval);
-      interval = undefined;
-      const sessionEpoch = refresh.activate(ctx);
+      refresh.activate(ctx);
       await refresh.request(ctx);
-      if (refresh.isActive(sessionEpoch)) {
-        interval = setIntervalFn(() => refresh.tick(), UPDATE_INTERVAL_MS);
-      }
     });
 
-    pi.on("input", async (_event, ctx) => {
-      await refresh.request(ctx);
+    pi.on("input", (_event, ctx) => {
+      void refresh.request(ctx);
       return { action: "continue" };
     });
 
-    pi.on("tool_execution_end", async (_event, ctx) => {
-      await refresh.request(ctx);
+    pi.on("agent_settled", (_event, ctx) => {
+      void refresh.request(ctx);
     });
 
     pi.on("session_shutdown", async (_event, ctx) => {
       refresh.stop();
-      if (interval) clearIntervalFn(interval);
-      interval = undefined;
       if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);
     });
   };
