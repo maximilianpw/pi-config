@@ -13,7 +13,7 @@
       "lifecycle": "lazy-keep-alive",
       "requestTimeoutMs": 60000,
       "inheritEnv": false,
-      "approveTools": true
+      "approveTools": false
     }
   }
 }

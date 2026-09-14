@@ -26,7 +26,7 @@ Do not commit `auth.json`, sessions, `.env`, or package caches.
 
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
 
-Computer use is provided by the pinned `pi-mcp-adapter` package and the `computer` server in `mcp.json`. The server starts lazily with `cua-driver mcp`, does not inherit the full Pi environment, and requires approval for every MCP tool call.
+Computer use is provided by the pinned `pi-mcp-adapter` package and the `computer` server in `mcp.json`. The server starts lazily with `cua-driver mcp`, does not inherit the full Pi environment, and runs MCP tool calls without an approval prompt.
 
 ## Apply
 
