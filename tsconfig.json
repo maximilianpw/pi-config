@@ -15,6 +15,7 @@
     "extensions/cliproxyapi-models.ts",
     "extensions/cliproxyapi-usage.ts",
     "extensions/cliproxyapi/client.ts",
+    "extensions/github-pr-comments.ts",
     "extensions/handoff.ts",
     "extensions/herdr-agent-state.ts",
     "extensions/safety-guard.ts",
@@ -23,6 +24,7 @@
     "extensions/whimsical.ts",
     "test/cliproxyapi-models.test.ts",
     "test/cliproxyapi-usage.test.ts",
+    "test/github-pr-comments.test.ts",
     "test/tps-tracker.test.ts",
     "test/vcs-status-widget.test.ts",
     "test/workflow-guards.test.ts"

@@ -1,4 +1,13 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  formatSize,
+  truncateHead,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
 
 type RepoResolution = { ok: true; repo: string } | { ok: false; error: string };
@@ -45,7 +54,7 @@ type ReviewComment = {
   in_reply_to_id?: number;
 };
 
-type NormalizedComment = {
+export type NormalizedComment = {
   kind: "issue" | "review" | "review_comment";
   id: number;
   author: string;
@@ -59,29 +68,45 @@ type NormalizedComment = {
   body: string;
 };
 
+const DEFAULT_MAX_COMMENTS = 200;
+const MAX_MAX_COMMENTS = 500;
+const MAX_COMMENT_BODY_CHARS = 16 * 1024;
+const MAX_OUTPUT_CHARS = 40 * 1024;
+const GITHUB_REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+
 const toolSchema = Type.Object({
-  prNumber: Type.Optional(Type.Number({ description: "Pull request number. If omitted, uses the PR for the current git branch or jj bookmark." })),
-  repo: Type.Optional(Type.String({ description: "GitHub repository in owner/name form. If omitted, inferred from git or jj git remotes." })),
+  prNumber: Type.Optional(Type.Integer({ minimum: 1, description: "Pull request number. If omitted, uses the PR for the current git branch or jj bookmark." })),
+  repo: Type.Optional(Type.String({ minLength: 3, description: "GitHub repository in owner/name form. If omitted, inferred from git or jj git remotes." })),
   includeEmptyReviews: Type.Optional(Type.Boolean({ description: "Include approval/change-request review records even when the review body is empty. Defaults to false." })),
-  maxComments: Type.Optional(Type.Number({ description: "Maximum number of normalized comments to return. Defaults to 200." })),
+  maxComments: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_MAX_COMMENTS, description: `Maximum number of the newest normalized comments to return. Defaults to ${DEFAULT_MAX_COMMENTS}; maximum ${MAX_MAX_COMMENTS}.` })),
 });
 
 type ToolInput = Static<typeof toolSchema>;
 
-function parseGitHubRepo(remoteUrl: string): string | undefined {
-  const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/);
-  if (sshMatch) return sshMatch[1];
+export function parseOwnerNameRepo(value: string): string | undefined {
+  const repo = value.trim();
+  return GITHUB_REPO_PATTERN.test(repo) ? repo : undefined;
+}
 
-  const httpsMatch = remoteUrl.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
-  if (httpsMatch) return httpsMatch[1];
+export function parseGitHubRepo(remoteUrl: string): string | undefined {
+  const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+  if (sshMatch) return parseOwnerNameRepo(sshMatch[1]);
+
+  const urlMatch = remoteUrl.match(/^(?:https?|ssh):\/\/(?:git@)?github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/);
+  if (urlMatch) return parseOwnerNameRepo(urlMatch[1]);
 
   return undefined;
 }
 
-async function resolveGitHubRepo(pi: ExtensionAPI, cwd: string, explicitRepo?: string): Promise<RepoResolution> {
-  if (explicitRepo) return { ok: true, repo: explicitRepo };
+async function resolveGitHubRepo(pi: ExtensionAPI, cwd: string, explicitRepo?: string, signal?: AbortSignal): Promise<RepoResolution> {
+  if (explicitRepo) {
+    const repo = parseOwnerNameRepo(explicitRepo);
+    return repo
+      ? { ok: true, repo }
+      : { ok: false, error: `invalid GitHub repo "${explicitRepo}"; expected owner/name` };
+  }
 
-  const gitResult = await pi.exec("git", ["remote", "-v"], { cwd, timeout: 5_000 });
+  const gitResult = await pi.exec("git", ["remote", "-v"], { cwd, signal, timeout: 5_000 });
   if (gitResult.code === 0) {
     for (const line of gitResult.stdout.split("\n")) {
       const remoteUrl = line.trim().split(/\s+/)[1];
@@ -91,7 +116,7 @@ async function resolveGitHubRepo(pi: ExtensionAPI, cwd: string, explicitRepo?: s
     }
   }
 
-  const jjResult = await pi.exec("jj", ["git", "remote", "list"], { cwd, timeout: 5_000 });
+  const jjResult = await pi.exec("jj", ["git", "remote", "list"], { cwd, signal, timeout: 5_000 });
   if (jjResult.code === 0) {
     for (const line of jjResult.stdout.split("\n")) {
       const remoteUrl = line.trim().split(/\s+/)[1];
@@ -108,22 +133,22 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim() !== ""))];
 }
 
-async function getJjBookmarkCandidates(pi: ExtensionAPI, cwd: string): Promise<string[]> {
-  const result = await pi.exec("jj", ["log", "--no-graph", "-r", "@ | @-", "--template", 'bookmarks ++ "\\n"'], { cwd, timeout: 5_000 });
+async function getJjBookmarkCandidates(pi: ExtensionAPI, cwd: string, signal?: AbortSignal): Promise<string[]> {
+  const result = await pi.exec("jj", ["log", "--no-graph", "-r", "@ | @-", "--template", 'bookmarks ++ "\\n"'], { cwd, signal, timeout: 5_000 });
   if (result.code !== 0) return [];
 
   return unique(result.stdout.split(/\s+/).filter((bookmark) => bookmark !== ""));
 }
 
-async function getGitBranchCandidate(pi: ExtensionAPI, cwd: string): Promise<string[]> {
-  const result = await pi.exec("git", ["branch", "--show-current"], { cwd, timeout: 5_000 });
+async function getGitBranchCandidate(pi: ExtensionAPI, cwd: string, signal?: AbortSignal): Promise<string[]> {
+  const result = await pi.exec("git", ["branch", "--show-current"], { cwd, signal, timeout: 5_000 });
   if (result.code !== 0) return [];
   return unique([result.stdout.trim()]);
 }
 
-async function ghPrNumber(pi: ExtensionAPI, cwd: string, repo: string, selector?: string): Promise<number | undefined> {
+async function ghPrNumber(pi: ExtensionAPI, cwd: string, repo: string, selector?: string, signal?: AbortSignal): Promise<number | undefined> {
   const args = selector ? ["pr", "view", selector, "--repo", repo, "--json", "number"] : ["pr", "view", "--repo", repo, "--json", "number"];
-  const result = await pi.exec("gh", args, { cwd, timeout: 10_000 });
+  const result = await pi.exec("gh", args, { cwd, signal, timeout: 10_000 });
   if (result.code !== 0) return undefined;
 
   try {
@@ -134,35 +159,35 @@ async function ghPrNumber(pi: ExtensionAPI, cwd: string, repo: string, selector?
   }
 }
 
-async function resolvePullRequest(pi: ExtensionAPI, cwd: string, params: ToolInput): Promise<PullRequestResolution> {
-  const repo = await resolveGitHubRepo(pi, cwd, params.repo);
+async function resolvePullRequest(pi: ExtensionAPI, cwd: string, params: ToolInput, signal?: AbortSignal): Promise<PullRequestResolution> {
+  const repo = await resolveGitHubRepo(pi, cwd, params.repo, signal);
   if (!repo.ok) return repo;
   if (params.prNumber !== undefined) return { ok: true, repo: repo.repo, number: params.prNumber };
 
-  const directNumber = await ghPrNumber(pi, cwd, repo.repo);
+  const directNumber = await ghPrNumber(pi, cwd, repo.repo, undefined, signal);
   if (directNumber !== undefined) return { ok: true, repo: repo.repo, number: directNumber };
 
-  const candidates = unique([...(await getGitBranchCandidate(pi, cwd)), ...(await getJjBookmarkCandidates(pi, cwd))]);
+  const candidates = unique([...(await getGitBranchCandidate(pi, cwd, signal)), ...(await getJjBookmarkCandidates(pi, cwd, signal))]);
   for (const candidate of candidates) {
-    const number = await ghPrNumber(pi, cwd, repo.repo, candidate);
+    const number = await ghPrNumber(pi, cwd, repo.repo, candidate, signal);
     if (number !== undefined) return { ok: true, repo: repo.repo, number };
   }
 
   return { ok: false, error: `failed to resolve PR from current git branch or jj bookmarks${candidates.length > 0 ? ` (${candidates.join(", ")})` : ""}; pass prNumber explicitly` };
 }
 
-async function ghJson<T>(pi: ExtensionAPI, cwd: string, args: string[]): Promise<T> {
-  const result = await pi.exec("gh", args, { cwd, timeout: 20_000 });
+async function ghJson<T>(pi: ExtensionAPI, cwd: string, args: string[], signal?: AbortSignal): Promise<T> {
+  const result = await pi.exec("gh", args, { cwd, signal, timeout: 20_000 });
   if (result.code !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `gh exited ${result.code}`);
   return JSON.parse(result.stdout) as T;
 }
 
-async function ghPaginatedArray<T>(pi: ExtensionAPI, cwd: string, endpoint: string): Promise<T[]> {
-  const pages = await ghJson<T[][]>(pi, cwd, ["api", "--paginate", "--slurp", endpoint]);
+async function ghPaginatedArray<T>(pi: ExtensionAPI, cwd: string, endpoint: string, signal?: AbortSignal): Promise<T[]> {
+  const pages = await ghJson<T[][]>(pi, cwd, ["api", "--paginate", "--slurp", endpoint], signal);
   return pages.flat();
 }
 
-function authorLogin(user: GitHubUser): string {
+function authorLogin(user: GitHubUser | undefined): string {
   return user?.login ?? "unknown";
 }
 
@@ -213,6 +238,14 @@ function normalizeComments(issueComments: IssueComment[], reviews: Review[], rev
   return comments.sort((a, b) => String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) || a.id - b.id);
 }
 
+function truncateBody(body: string, maxChars: number): { body: string; truncated: boolean } {
+  if (body.length <= maxChars) return { body, truncated: false };
+  return {
+    body: `${body.slice(0, Math.max(0, maxChars - 20))}\n… [body truncated]`,
+    truncated: true,
+  };
+}
+
 function formatComment(comment: NormalizedComment): string {
   const location = comment.path ? ` ${comment.path}${comment.line ? `:${comment.line}` : ""}` : "";
   const state = comment.state ? ` [${comment.state}]` : "";
@@ -220,48 +253,136 @@ function formatComment(comment: NormalizedComment): string {
   return `- ${comment.kind}${state} #${comment.id}${location}${reply} by ${comment.author} at ${comment.createdAt ?? "unknown"}\n  ${comment.body.replace(/\n/g, "\n  ")}${comment.url ? `\n  ${comment.url}` : ""}`;
 }
 
+export type CommentSelection = {
+  comments: NormalizedComment[];
+  text: string;
+  omittedByCount: number;
+  omittedBySize: number;
+  truncatedBodies: number;
+};
+
+export function selectCommentsForOutput(
+  allComments: NormalizedComment[],
+  maxComments: number,
+  limits: { maxBodyChars?: number; maxOutputChars?: number } = {},
+): CommentSelection {
+  const maxBodyChars = limits.maxBodyChars ?? MAX_COMMENT_BODY_CHARS;
+  const maxOutputChars = limits.maxOutputChars ?? MAX_OUTPUT_CHARS;
+  const countLimited = allComments.slice(-maxComments);
+  const candidates = countLimited.map((comment) => {
+    const body = truncateBody(comment.body, maxBodyChars);
+    const bounded = { ...comment, body: body.body };
+    return { comment: bounded, formatted: formatComment(bounded), bodyTruncated: body.truncated };
+  });
+
+  const selected: typeof candidates = [];
+  let outputChars = 0;
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index];
+    if (!candidate) continue;
+    const separatorChars = selected.length === 0 ? 0 : 2;
+    if (outputChars + separatorChars + candidate.formatted.length > maxOutputChars) break;
+    selected.push(candidate);
+    outputChars += separatorChars + candidate.formatted.length;
+  }
+  selected.reverse();
+
+  return {
+    comments: selected.map(({ comment }) => comment),
+    text: selected.map(({ formatted }) => formatted).join("\n\n"),
+    omittedByCount: allComments.length - countLimited.length,
+    omittedBySize: countLimited.length - selected.length,
+    truncatedBodies: selected.filter(({ bodyTruncated }) => bodyTruncated).length,
+  };
+}
+
 export default function githubPullRequestCommentsExtension(pi: ExtensionAPI): void {
+  const tempDirectories = new Set<string>();
+
+  async function boundedOutput(output: string, fullOutput: string, preserveFull: boolean): Promise<string> {
+    const truncation = truncateHead(output, {
+      maxBytes: DEFAULT_MAX_BYTES - 1024,
+      maxLines: DEFAULT_MAX_LINES - 2,
+    });
+    if (!truncation.truncated && !preserveFull) return truncation.content;
+
+    const directory = await mkdtemp(join(tmpdir(), "pi-github-pr-comments-"));
+    const file = join(directory, "comments.txt");
+    tempDirectories.add(directory);
+    await writeFile(file, fullOutput, { encoding: "utf8", mode: 0o600 });
+    const reason = truncation.truncated
+      ? `Output truncated to ${truncation.outputLines} lines / ${formatSize(truncation.outputBytes)}`
+      : "Some comments or bodies were omitted from the tool result";
+    return `${truncation.content}\n\n[${reason}. Full output saved to: ${file}]`;
+  }
+
   pi.registerTool({
     name: "github_pr_comments",
     label: "GitHub PR Comments",
-    description: "Read GitHub pull request issue comments, reviews, and inline review comments using the GitHub CLI (`gh`).",
+    description: "Read GitHub pull request issue comments, reviews, and inline review comments using the GitHub CLI (`gh`). Returns the newest comments within a 50KB output limit and saves full output to a temporary file when truncated.",
     promptSnippet: "Read comments from a GitHub pull request",
     promptGuidelines: [
       "Use github_pr_comments when the user asks to inspect, summarize, or respond to GitHub pull request comments or review feedback.",
       "github_pr_comments requires the GitHub CLI (`gh`) to be installed and authenticated.",
     ],
     parameters: toolSchema,
-    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
-      const pr = await resolvePullRequest(pi, ctx.cwd, params);
-      if (!pr.ok) {
-        return { content: [{ type: "text", text: `github_pr_comments: ${pr.error}` }], isError: true };
-      }
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const pr = await resolvePullRequest(pi, ctx.cwd, params, signal);
+      if (!pr.ok) throw new Error(`github_pr_comments: ${pr.error}`);
 
-      onUpdate?.({ content: [{ type: "text", text: `Loading comments for ${pr.repo}#${pr.number}...` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Loading comments for ${pr.repo}#${pr.number}...` }], details: {} });
 
       try {
         const [summary, issueComments, reviews, reviewComments] = await Promise.all([
-          ghJson<PullRequestSummary>(pi, ctx.cwd, ["pr", "view", String(pr.number), "--repo", pr.repo, "--json", "number,title,url,author"]),
-          ghPaginatedArray<IssueComment>(pi, ctx.cwd, `repos/${pr.repo}/issues/${pr.number}/comments?per_page=100`),
-          ghPaginatedArray<Review>(pi, ctx.cwd, `repos/${pr.repo}/pulls/${pr.number}/reviews?per_page=100`),
-          ghPaginatedArray<ReviewComment>(pi, ctx.cwd, `repos/${pr.repo}/pulls/${pr.number}/comments?per_page=100`),
+          ghJson<PullRequestSummary>(pi, ctx.cwd, ["pr", "view", String(pr.number), "--repo", pr.repo, "--json", "number,title,url,author"], signal),
+          ghPaginatedArray<IssueComment>(pi, ctx.cwd, `repos/${pr.repo}/issues/${pr.number}/comments?per_page=100`, signal),
+          ghPaginatedArray<Review>(pi, ctx.cwd, `repos/${pr.repo}/pulls/${pr.number}/reviews?per_page=100`, signal),
+          ghPaginatedArray<ReviewComment>(pi, ctx.cwd, `repos/${pr.repo}/pulls/${pr.number}/comments?per_page=100`, signal),
         ]);
 
-        const maxComments = params.maxComments ?? 200;
+        const maxComments = params.maxComments ?? DEFAULT_MAX_COMMENTS;
         const allComments = normalizeComments(issueComments, reviews, reviewComments, params.includeEmptyReviews ?? false);
-        const comments = allComments.slice(0, maxComments);
-        const truncated = allComments.length > comments.length;
-        const header = `GitHub PR comments for ${pr.repo}#${summary.number}: ${summary.title ?? "(untitled)"}\n${summary.url ?? ""}\nAuthor: ${authorLogin(summary.author)}\nCounts: ${issueComments.length} issue comments, ${reviews.length} reviews, ${reviewComments.length} inline review comments${truncated ? `; showing first ${comments.length} of ${allComments.length}` : ""}`;
-        const body = comments.length > 0 ? comments.map(formatComment).join("\n\n") : "No comments found.";
+        const selection = selectCommentsForOutput(allComments, maxComments);
+        const omitted = selection.omittedByCount + selection.omittedBySize;
+        const truncation = [
+          omitted > 0 ? `showing latest ${selection.comments.length} of ${allComments.length}` : undefined,
+          selection.truncatedBodies > 0 ? `${selection.truncatedBodies} comment bodies truncated` : undefined,
+        ].filter((value): value is string => value !== undefined);
+        const baseHeader = `GitHub PR comments for ${pr.repo}#${summary.number}: ${summary.title ?? "(untitled)"}\n${summary.url ?? ""}\nAuthor: ${authorLogin(summary.author)}\nCounts: ${issueComments.length} issue comments, ${reviews.length} reviews, ${reviewComments.length} inline review comments`;
+        const header = `${baseHeader}${truncation.length > 0 ? `; ${truncation.join("; ")}` : ""}`;
+        const body = selection.comments.length > 0
+          ? selection.text
+          : allComments.length > 0
+            ? "Comments were found, but none fit the output budget."
+            : "No comments found.";
+        const truncated = omitted > 0 || selection.truncatedBodies > 0;
+        const fullBody = allComments.length > 0 ? allComments.map(formatComment).join("\n\n") : "No comments found.";
+        const text = await boundedOutput(`${header}\n\n${body}`, `${baseHeader}\n\n${fullBody}`, truncated);
 
         return {
-          content: [{ type: "text", text: `${header}\n\n${body}` }],
-          details: { repo: pr.repo, prNumber: pr.number, summary, counts: { issueComments: issueComments.length, reviews: reviews.length, reviewComments: reviewComments.length }, comments, truncated },
+          content: [{ type: "text", text }],
+          details: {
+            repo: pr.repo,
+            prNumber: pr.number,
+            summary,
+            counts: { issueComments: issueComments.length, reviews: reviews.length, reviewComments: reviewComments.length },
+            comments: selection.comments,
+            truncated,
+            omittedByCount: selection.omittedByCount,
+            omittedBySize: selection.omittedBySize,
+            truncatedBodies: selection.truncatedBodies,
+          },
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        return { content: [{ type: "text", text: `github_pr_comments failed: ${message}` }], isError: true };
+        throw new Error(`github_pr_comments failed: ${message}`);
       }
     },
+  });
+
+  pi.on("session_shutdown", async () => {
+    const directories = [...tempDirectories];
+    tempDirectories.clear();
+    await Promise.allSettled(directories.map((directory) => rm(directory, { recursive: true, force: true })));
   });
 }
