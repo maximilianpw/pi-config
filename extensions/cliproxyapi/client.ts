@@ -1,11 +1,17 @@
+import { readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CLIPROXYAPI_PROVIDER_ID = "cliproxyapi";
-export const CLIPROXYAPI_ROOT_URL = "http://127.0.0.1:8317";
+export const CLIPROXYAPI_ROOT_URL =
+	process.env.CLIPROXYAPI_ROOT_URL ?? "http://127.0.0.1:8317";
 export const CLIPROXYAPI_BASE_URL = `${CLIPROXYAPI_ROOT_URL}/v1`;
-export const CLIPROXYAPI_API_KEY = "cliproxyapi-local-claudex";
+export const CLIPROXYAPI_API_KEY =
+	process.env.CLIPROXYAPI_API_KEY ??
+	(process.env.CLIPROXYAPI_API_KEY_FILE
+		? readFileSync(process.env.CLIPROXYAPI_API_KEY_FILE, "utf8").trim()
+		: "cliproxyapi-local-claudex");
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
