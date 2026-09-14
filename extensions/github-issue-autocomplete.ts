@@ -142,7 +142,7 @@ export default function (pi: ExtensionAPI): void {
       return issuesPromise;
     };
 
-    void getIssues();
+    // Avoid a GitHub API call in sessions that never use issue completion.
     ctx.ui.addAutocompleteProvider((current) => createIssueAutocompleteProvider(current, getIssues));
   });
 }
