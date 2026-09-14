@@ -1,25 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-
-function textContent(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-
-	return content
-		.filter(
-		(block): block is { type: "text"; text: string } =>
-			typeof block === "object" &&
-			block !== null &&
-			"type" in block &&
-			block.type === "text" &&
-			"text" in block &&
-			typeof block.text === "string",
-		)
-		.map((block) => block.text)
-		.join("\n\n");
-}
+import { latestAssistantMarkdown } from "../shared/latest-assistant-markdown.ts";
 
 export default function saveMarkdownExtension(pi: ExtensionAPI) {
 	pi.registerCommand("save-md", {
@@ -27,16 +10,8 @@ export default function saveMarkdownExtension(pi: ExtensionAPI) {
 		handler: async (args, ctx) => {
 			await ctx.waitForIdle();
 
-			const branch = ctx.sessionManager.getBranch();
-			let assistantMessage: AssistantMessage | undefined;
-			for (let index = branch.length - 1; index >= 0; index--) {
-				const entry = branch[index];
-				if (entry?.type === "message" && entry.message.role === "assistant") {
-					assistantMessage = entry.message;
-					break;
-				}
-			}
-			if (!assistantMessage) {
+			const markdown = latestAssistantMarkdown(ctx.sessionManager.getBranch());
+			if (markdown === undefined) {
 				ctx.ui.notify("No assistant response to save", "warning");
 				return;
 			}
@@ -47,7 +22,6 @@ export default function saveMarkdownExtension(pi: ExtensionAPI) {
 				return;
 			}
 
-			const markdown = textContent(assistantMessage.content);
 			if (!markdown.trim()) {
 				ctx.ui.notify(
 					"The latest assistant response has no Markdown text",
