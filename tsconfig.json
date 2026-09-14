@@ -23,11 +23,13 @@
     "extensions/tps-tracker.ts",
     "extensions/vcs-status-widget.ts",
     "extensions/whimsical.ts",
+    "extensions/worker-configuration-guard.ts",
     "test/cliproxyapi-models.test.ts",
     "test/cliproxyapi-usage.test.ts",
     "test/github-pr-comments.test.ts",
     "test/tps-tracker.test.ts",
     "test/vcs-status-widget.test.ts",
+    "test/worker-configuration-guard.test.ts",
     "test/workflow-guards.test.ts"
   ]
 }
