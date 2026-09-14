@@ -24,6 +24,10 @@
         "typescript": "^7.0.2",
       },
     },
+    "extensions/cfpaste": {
+      "name": "pi-cfpaste-extension",
+      "version": "0.1.0",
+    },
     "extensions/executor": {
       "name": "pi-executor-extension",
       "version": "0.1.0",
@@ -664,6 +668,8 @@
     "peberminta": ["peberminta@0.9.0", "", {}, "sha512-XIxfHpEuSJbITd1H3EeQwpcZbTLHc+VVr8ANI9t5sit565tsI4/xK3KWTUFE2e6QiangUkh3B0jihzmGnNrRsQ=="],
 
     "pi-ask-user-extension": ["pi-ask-user-extension@workspace:extensions/ask-user"],
+
+    "pi-cfpaste-extension": ["pi-cfpaste-extension@workspace:extensions/cfpaste"],
 
     "pi-executor-extension": ["pi-executor-extension@workspace:extensions/executor"],
 
