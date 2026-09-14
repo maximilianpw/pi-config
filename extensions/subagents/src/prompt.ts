@@ -2,17 +2,19 @@
 
 /** Describes subagent_spawn, including harnesses and the fixed concurrency cap. */
 export const SUBAGENT_SPAWN_TOOL_DESCRIPTION =
-  "Spawn a background subagent: a fully autonomous, headless agent with its own context window and the selected harness's normal host permissions. You choose the harness it runs on: pi (in-process pi session, inherits this environment's tools and config), claude (Claude Code), or codex (Codex CLI). Fire-and-forget: this returns immediately with an id. The subagent's final output is queued back to you as a message when it settles, or collect it explicitly with subagent_wait. Children cannot orchestrate more agents/workflows or ask the user, and cannot see this conversation, so the prompt must be self-contained. Only use trusted working directories. Max 4 subagents can be running at once across all harnesses.";
+  "Run bounded research or review in a disposable background agent with its own context window and the selected harness's normal host permissions. Use it for independent, read-only work that can be fully described up front and returned as a concise report. Keep decisions, synthesis, implementation, and user interaction in the main thread. Choose the harness: pi (in-process Pi session), claude (Claude Code), or codex (Codex CLI). The result returns as a message when it settles, or you can collect it with subagent_wait. The child cannot see this conversation, ask the user, or start more agents. Only use trusted working directories. At most 4 subagents can run at once.";
 
 /** Adds background subagent delegation to the parent model's available-tools prompt. */
 export const SUBAGENT_SPAWN_PROMPT_SNIPPET =
-  "Spawn a background subagent on a chosen harness (pi, Claude Code, or Codex; own context, normal tools) for a self-contained task";
+  "Run bounded, read-only research or review in a disposable background agent";
 
-/** Guides the parent model to delegate standalone tasks and avoid unnecessary blocking waits. */
+/** Guides the parent model to keep integrated work in the main thread. */
 export const SUBAGENT_SPAWN_PROMPT_GUIDELINES = [
-  "Use subagent_spawn to delegate self-contained tasks that can run in the background; give it a complete, standalone prompt.",
-  "Pick the subagent harness deliberately: pi unless you have a reason to prefer Claude Code or Codex (e.g. the user asked for one, or the task suits that harness).",
-  "After subagent_spawn, keep working; results arrive automatically. Only call subagent_wait when you cannot proceed without the result.",
+  "Use subagent_spawn only for bounded, independent research or review that can be fully specified up front.",
+  "Keep decisions, synthesis, implementation, and user interaction in the main thread.",
+  "Give the subagent a complete prompt and ask for a concise report with evidence.",
+  "Choose the harness deliberately. Use pi by default unless the user or task calls for Claude Code or Codex.",
+  "Keep working after spawning it. Use subagent_wait only when its result blocks progress.",
 ];
 
 /** Model-facing schema descriptions for subagent_spawn task and execution options. */
