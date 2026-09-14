@@ -79,6 +79,18 @@ import { safeStringify, writeFileAtomic } from "./serialization.ts";
 
 const PREVIEW_LENGTH = 200;
 const EMIT_INTERVAL_MS = 120;
+const WORKFLOW_TOOL_NAME = "workflow";
+
+export function shouldActivateWorkflowTool(input: string): boolean {
+  if (/\bultracode\b/i.test(input)) return true;
+  if (/\b(?:do not|don't|dont|avoid|without)\b[^\n]{0,40}\bworkflow\b/i.test(input)) return false;
+  return /\b(?:run|start|launch|use)\s+(?:(?:a|the)\s+)?(?:(?:multi-agent|agent)\s+)?workflow(?:\s+tool)?\b/i.test(input);
+}
+
+export function parseWorkflowToolCommand(input: string): "enable" | "disable" | undefined {
+  const command = input.trim().toLowerCase();
+  return command === "enable" || command === "disable" ? command : undefined;
+}
 
 const THINKING_LEVELS = [
   "off",
@@ -241,6 +253,17 @@ function runDetailText(
 }
 
 export default function workflows(pi: ExtensionAPI) {
+  const deactivateWorkflowTool = () => {
+    const active = pi.getActiveTools();
+    if (!active.includes(WORKFLOW_TOOL_NAME)) return;
+    pi.setActiveTools(active.filter((name) => name !== WORKFLOW_TOOL_NAME));
+  };
+  const activateWorkflowTool = () => {
+    const active = pi.getActiveTools();
+    if (active.includes(WORKFLOW_TOOL_NAME)) return;
+    pi.setActiveTools([...active, WORKFLOW_TOOL_NAME]);
+  };
+
   /** Live background runs, for /workflows and shutdown cleanup. */
   const activeRuns = new Map<
     string,
@@ -287,8 +310,16 @@ export default function workflows(pi: ExtensionAPI) {
   };
 
   pi.on("session_start", (_event, ctx) => {
+    // Action methods are unavailable while extensions load. Disable the tool
+    // here, after the session runtime has initialized but before user input.
+    deactivateWorkflowTool();
     if (ctx.hasUI) lastUi = ctx.ui;
     updateIndicator();
+  });
+
+  pi.on("input", (event) => {
+    if (shouldActivateWorkflowTool(event.text)) activateWorkflowTool();
+    return { action: "continue" };
   });
 
   pi.on("session_shutdown", async () => {
@@ -317,9 +348,20 @@ export default function workflows(pi: ExtensionAPI) {
 
   pi.registerCommand("workflows", {
     description:
-      "List workflow runs (`/workflows <runId>` for one run's detail)",
+      "List workflow runs, inspect one by ID, or enable/disable the workflow tool",
     handler: async (rawArgs, ctx) => {
       const arg = rawArgs.trim();
+      const toolCommand = parseWorkflowToolCommand(arg);
+      if (toolCommand === "enable") {
+        activateWorkflowTool();
+        ctx.ui.notify("Workflow tool enabled for this session.", "info");
+        return;
+      }
+      if (toolCommand === "disable") {
+        deactivateWorkflowTool();
+        ctx.ui.notify("Workflow tool disabled for this session.", "info");
+        return;
+      }
       if (ctx.mode === "tui") {
         lastUi = ctx.ui;
         await showWorkflowDashboard(ctx, activeDetails, arg || undefined);
