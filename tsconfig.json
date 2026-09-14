@@ -19,7 +19,7 @@
     "extensions/safety-guard.ts",
     "extensions/tps-tracker.ts",
     "extensions/vcs-status-widget.ts",
-    "extensions/whimsical-working-message.ts",
+    "extensions/whimsical.ts",
     "test/cliproxyapi-models.test.ts",
     "test/cliproxyapi-usage.test.ts",
     "test/tps-tracker.test.ts",
