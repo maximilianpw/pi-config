@@ -13,6 +13,8 @@ Agent policy lives in `~/nix-config`: shared rules in `users/maxpw/agents/shared
 - `prompts/` — prompt templates
 - `themes/` — TUI themes
 
+Notable local commands include `/toggle-skills`, `/worktrees`, and `/save-md`. The worktree manager targets repositories using the canonical `.bare` plus linked-checkout layout. Its creation helper is bundled under `extensions/pi-worktrees/scripts/`.
+
 Skills are not stored here. They live in `~/Local/agent-skills` and install with:
 
 ```bash
