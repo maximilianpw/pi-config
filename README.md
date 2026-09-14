@@ -7,6 +7,7 @@ Agent policy lives in `~/nix-config`: shared rules in `users/maxpw/agents/shared
 ## Layout
 
 - `settings.json` — Pi defaults, enabled models, and installed Pi packages
+- `mcp.json` — Pi MCP adapter settings and the local Cua Driver computer-use server
 - `cloudflare-deployment-allowlist.json` — human-owned deployment policy; empty maps deny all deployments
 - `cli/` — command-line entry points installed by Home Manager, including `cliproxyapi-util quota`
 - `extensions/` — global Pi extensions; each package or `.ts` file is the source of truth for the commands and tools it registers
@@ -24,6 +25,8 @@ skills add ~/Local/agent-skills --global --agent pi --skill '*' --yes
 Do not commit `auth.json`, sessions, `.env`, or package caches.
 
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
+
+Computer use is provided by the pinned `pi-mcp-adapter` package and the `computer` server in `mcp.json`. The server starts lazily with `cua-driver mcp`, does not inherit the full Pi environment, and requires approval for every MCP tool call.
 
 ## Apply
 

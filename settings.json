@@ -17,6 +17,7 @@
   ],
   "packages": [
     "npm:@plannotator/pi-extension",
-    "npm:@ff-labs/pi-fff"
+    "npm:@ff-labs/pi-fff",
+    "npm:pi-mcp-adapter@2.33.0"
   ]
 }

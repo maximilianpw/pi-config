@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "hostConfigDiscovery": "off",
+    "mcpFooterStatus": "compact",
+    "notifyOnStartupConnect": false
+  },
+  "mcpServers": {
+    "computer": {
+      "command": "cua-driver",
+      "args": [
+        "mcp"
+      ],
+      "lifecycle": "lazy-keep-alive",
+      "requestTimeoutMs": 60000,
+      "inheritEnv": false,
+      "approveTools": true
+    }
+  }
+}
