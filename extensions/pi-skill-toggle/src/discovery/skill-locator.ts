@@ -14,15 +14,20 @@ export class DefaultSkillLocator implements SkillLocator {
   async findSkillFiles(cwd: string): Promise<LocatedSkillFile[]> {
     const roots = getSkillRoots(cwd);
     const files: LocatedSkillFile[] = [];
-    const seen = new Set<string>();
+    const seenFiles = new Set<string>();
+    const seenSkillRoots = new Set<string>();
 
     for (const root of roots) {
       if (!(await this.fs.access(root.path))) continue;
+
+      const canonicalSkillRoot = await this.fs.realpath(root.path);
+      if (seenSkillRoots.has(canonicalSkillRoot)) continue;
+      seenSkillRoots.add(canonicalSkillRoot);
+
       const found = await this.scanSkillDir(root.path, root.path, root.source, root.includeRootMarkdownFiles);
       for (const file of found) {
-        const canonicalPath = await this.getCanonicalPath(file.filePath);
-        if (seen.has(canonicalPath)) continue;
-        seen.add(canonicalPath);
+        if (seenFiles.has(file.filePath)) continue;
+        seenFiles.add(file.filePath);
         files.push(file);
       }
     }
@@ -88,14 +93,6 @@ export class DefaultSkillLocator implements SkillLocator {
       return (await this.fs.stat(path)).isFile;
     } catch {
       return false;
-    }
-  }
-
-  private async getCanonicalPath(path: string): Promise<string> {
-    try {
-      return await this.fs.realpath(path);
-    } catch {
-      return path;
     }
   }
 
