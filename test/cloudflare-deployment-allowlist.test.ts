@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -698,4 +698,29 @@ test("detects high-confidence bash mutations of the global policy", () => {
 		findsCloudflarePolicyMutation(`cp ${policyPath} /tmp/policy.backup.json`, cwd),
 		false,
 	);
+});
+
+test("the checked-in policy narrowly recognizes CF Paste production", () => {
+	const policyJson: unknown = JSON.parse(
+		readFileSync(join(process.cwd(), "cloudflare-deployment-allowlist.json"), "utf8"),
+	);
+	const parsed = parseCloudflareDeploymentPolicy(policyJson);
+	assert.equal(parsed._tag, "ok");
+	if (parsed._tag !== "ok") return;
+	assert.equal(
+		decide(
+			"alchemy deploy --stage production",
+			"/Users/max-vev/Local/cf-paste",
+			parsed.value,
+		)._tag,
+		"allow",
+	);
+	assert.equal(parsed.value.version, 2);
+	if (parsed.value.version === 2) {
+		assert.deepEqual(parsed.value.alchemy, [{
+			project: "/Users/max-vev/Local/cf-paste/alchemy.run.ts",
+			stages: new Set(["production"]),
+			stack: "CfPaste",
+		}]);
+	}
 });

@@ -1,5 +1,11 @@
 {
   "version": 2,
   "workers": {},
-  "alchemy": []
+  "alchemy": [
+    {
+      "project": "/Users/max-vev/Local/cf-paste/alchemy.run.ts",
+      "stages": ["production"],
+      "stack": "CfPaste"
+    }
+  ]
 }
