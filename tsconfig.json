@@ -15,6 +15,7 @@
     "extensions/cliproxyapi-models.ts",
     "extensions/cliproxyapi-usage.ts",
     "extensions/cliproxyapi/client.ts",
+    "extensions/handoff.ts",
     "extensions/herdr-agent-state.ts",
     "extensions/safety-guard.ts",
     "extensions/tps-tracker.ts",
