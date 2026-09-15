@@ -72,18 +72,16 @@ function sendReviewFeedback(pi: ExtensionAPI, decision: ReviewDecision, ctx: Ext
 	return false;
 }
 
-function makeClient(pi: ExtensionAPI): Result<MarkdownPasteClient, CfPasteError> {
+function makeClient(pi: ExtensionAPI, publicOrigin?: URL): Result<MarkdownPasteClient, CfPasteError> {
 	const privateOrigin = parseServiceOrigin(process.env.CFPASTE_PRIVATE_ORIGIN);
 	if (!privateOrigin.ok) return privateOrigin;
-	const publicOrigin = process.env.CFPASTE_PUBLIC_ORIGIN === undefined ? undefined : parseServiceOrigin(process.env.CFPASTE_PUBLIC_ORIGIN, "CFPASTE_PUBLIC_ORIGIN");
-	if (publicOrigin !== undefined && !publicOrigin.ok) return publicOrigin;
 	const executor: CloudflaredExecutor = {
 		async execute(args, options) {
 			const result = await pi.exec("cloudflared", [...args], { timeout: options.timeout, ...(options.signal === undefined ? {} : { signal: options.signal }) });
 			return { stdout: result.stdout, code: result.code };
 		},
 	};
-	return success(createMarkdownPasteClient({ privateOrigin: privateOrigin.value, ...(publicOrigin?.ok === true ? { publicOrigin: publicOrigin.value } : {}), tokenProvider: createCloudflareAccessTokenProvider(executor, privateOrigin.value.origin) }));
+	return success(createMarkdownPasteClient({ privateOrigin: privateOrigin.value, ...(publicOrigin === undefined ? {} : { publicOrigin }), tokenProvider: createCloudflareAccessTokenProvider(executor, privateOrigin.value.origin) }));
 }
 
 async function upload(client: MarkdownPasteClient, input: { readonly markdown: string; readonly title: string; readonly sourceFilename: string | null; readonly provenance: "pi" | "plannotator-approved"; readonly publish: PublicationExpiry | null }, ctx: ExtensionCommandContext): Promise<void> {
@@ -96,7 +94,7 @@ async function upload(client: MarkdownPasteClient, input: { readonly markdown: s
 export function createCfPasteExtension(options: CfPasteExtensionOptions = {}): ExtensionFactory {
 	return (pi) => {
 		const reviewer = options.reviewer ?? createPlannotatorReviewer();
-		const client = () => options.client === undefined ? makeClient(pi) : success(options.client);
+		const client = (publicOrigin?: URL) => options.client === undefined ? makeClient(pi, publicOrigin) : success(options.client);
 
 		pi.registerCommand("cf-paste", {
 			description: "Create a private CF Paste Document from Markdown",
@@ -160,14 +158,16 @@ export function createCfPasteExtension(options: CfPasteExtensionOptions = {}): E
 				await ctx.waitForIdle();
 				const token = args.trim() === "" ? "30d" : args.trim();
 				if (!isPublicationExpiry(token)) return ctx.ui.notify("Usage: /publish-last [1d|7d|30d|90d|never]", "warning");
+				const publicOrigin = parseServiceOrigin(process.env.CFPASTE_PUBLIC_ORIGIN, "CFPASTE_PUBLIC_ORIGIN");
+				if (!publicOrigin.ok) return notifyFailure(ctx, publicOrigin.error);
+				const resolvedClient = client(publicOrigin.value);
+				if (!resolvedClient.ok) return notifyFailure(ctx, resolvedClient.error);
 				const source = latestMarkdown(ctx);
 				if (!source.ok) return notifyFailure(ctx, source.error);
 				const reviewed = await reviewer.reviewLatest(source.value, ctx.signal);
 				if (!reviewed.ok) return notifyFailure(ctx, reviewed.error);
 				if (sendReviewFeedback(pi, reviewed.value, ctx)) return;
 				if (reviewed.value.decision !== "approved") return;
-				const resolvedClient = client();
-				if (!resolvedClient.ok) return notifyFailure(ctx, resolvedClient.error);
 				await upload(resolvedClient.value, { markdown: reviewed.value.markdown, title: "Pi agent response", sourceFilename: null, provenance: "plannotator-approved", publish: token }, ctx);
 			},
 		});
