@@ -1,30 +1,41 @@
-declare const redactedBrand: unique symbol;
+const revealRedacted = Symbol("cfpaste.reveal-redacted");
+const inspectCustom = Symbol.for("nodejs.util.inspect.custom");
 
 export interface Redacted<Value> {
-	readonly [redactedBrand]?: Value;
+	readonly [revealRedacted]: () => Value;
 	toString(): string;
 	toJSON(): string;
 }
 
-const values = new WeakMap<object, unknown>();
-const prototype = {
-	toString: () => "<redacted>",
-	toJSON: () => "<redacted>",
-	[Symbol.for("nodejs.util.inspect.custom")]: () => "<redacted>",
-};
+class RedactedBox<Value> implements Redacted<Value> {
+	readonly #value: Value;
+
+	constructor(value: Value) {
+		this.#value = value;
+		Object.freeze(this);
+	}
+
+	readonly [revealRedacted] = (): Value => this.#value;
+	readonly [inspectCustom] = (): string => "<redacted>";
+
+	toString(): string {
+		return "<redacted>";
+	}
+
+	toJSON(): string {
+		return "<redacted>";
+	}
+}
 
 function make<Value>(value: Value): Redacted<Value> {
-	// SAFETY: the frozen prototype supplies the complete public surface; the secret remains in a WeakMap.
-	const wrapped = Object.create(prototype) as Redacted<Value>;
-	values.set(wrapped, value);
-	return wrapped;
+	return new RedactedBox(value);
 }
 
 function value<Value>(wrapped: Redacted<Value>): Value {
-	if (typeof wrapped !== "object" || wrapped === null || !values.has(wrapped)) {
+	if (!(wrapped instanceof RedactedBox)) {
 		throw new Error("Redacted value was not created by this module");
 	}
-	return values.get(wrapped) as Value;
+	return wrapped[revealRedacted]();
 }
 
 export const Redacted = { make, value } as const;
