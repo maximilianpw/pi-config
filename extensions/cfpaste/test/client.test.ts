@@ -40,6 +40,30 @@ test("Access rejection retries once with the same idempotency key and validates 
 	assert.equal(requests[1]?.redirect, "manual");
 });
 
+test("Access rejection stops after one refresh retry", async () => {
+	let requests = 0;
+	let refreshes = 0;
+	const tokenProvider: CloudflareAccessTokenProvider = {
+		resolveToken: async () => success(Redacted.make("cached")),
+		refreshToken: async () => {
+			refreshes += 1;
+			return success(Redacted.make("fresh"));
+		},
+	};
+	const client = createMarkdownPasteClient({
+		privateOrigin: new URL("https://private.example"),
+		tokenProvider,
+		fetchImplementation: async () => {
+			requests += 1;
+			return new Response(null, { status: 403 });
+		},
+	});
+	const result = await client.createDocument({ markdown: "# Safe", title: "Safe", sourceFilename: null, provenance: "pi", publish: null, idempotencyKey: "key", interactive: true });
+	assert.equal(result.ok, false);
+	assert.equal(refreshes, 1);
+	assert.equal(requests, 2);
+});
+
 test("client rejects a response URL on an unexpected origin", async () => {
 	const id = "abcdefghijklmnopqrstuv";
 	const tokenProvider: CloudflareAccessTokenProvider = { resolveToken: async () => success(Redacted.make("token")), refreshToken: async () => success(Redacted.make("token")) };
