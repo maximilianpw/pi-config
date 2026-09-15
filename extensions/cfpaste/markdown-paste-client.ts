@@ -57,22 +57,29 @@ function validUrl(value: unknown, origin: URL, path: RegExp): value is string {
 
 function parseResponse(value: unknown, privateOrigin: URL, publicOrigin: URL | undefined): Result<CreatedMarkdownDocument, CfPasteError> {
 	if (typeof value !== "object" || value === null) return failure(new CfPasteError("invalid-response", "CF Paste returned a malformed response"));
-	const record = value as Record<string, unknown>;
-	if (!IDENTIFIER.test(String(record.documentId)) || !IDENTIFIER.test(String(record.revisionId))) return failure(new CfPasteError("invalid-response", "CF Paste returned invalid identifiers"));
-	const documentId = String(record.documentId);
-	const revisionId = String(record.revisionId);
-	const publicationId = record.publicationId === null ? null : String(record.publicationId);
-	if (publicationId !== null && !IDENTIFIER.test(publicationId)) return failure(new CfPasteError("invalid-response", "CF Paste returned an invalid Publication identifier"));
+	const documentId = "documentId" in value ? value.documentId : undefined;
+	const revisionId = "revisionId" in value ? value.revisionId : undefined;
+	const publicationId = "publicationId" in value ? value.publicationId : undefined;
+	const privateUrl = "privateUrl" in value ? value.privateUrl : undefined;
+	const rawUrl = "rawUrl" in value ? value.rawUrl : undefined;
+	const downloadUrl = "downloadUrl" in value ? value.downloadUrl : undefined;
+	const publicUrl = "publicUrl" in value ? value.publicUrl : undefined;
+	if (typeof documentId !== "string" || typeof revisionId !== "string" || !IDENTIFIER.test(documentId) || !IDENTIFIER.test(revisionId)) {
+		return failure(new CfPasteError("invalid-response", "CF Paste returned invalid identifiers"));
+	}
+	if (publicationId !== null && (typeof publicationId !== "string" || !IDENTIFIER.test(publicationId))) {
+		return failure(new CfPasteError("invalid-response", "CF Paste returned an invalid Publication identifier"));
+	}
 	const privatePath = new RegExp(`^/documents/${documentId}$`, "u");
-	if (!validUrl(record.privateUrl, privateOrigin, privatePath) || !validUrl(record.rawUrl, privateOrigin, new RegExp(`^/documents/${documentId}/raw$`, "u")) || !validUrl(record.downloadUrl, privateOrigin, new RegExp(`^/documents/${documentId}/download$`, "u"))) {
+	if (!validUrl(privateUrl, privateOrigin, privatePath) || !validUrl(rawUrl, privateOrigin, new RegExp(`^/documents/${documentId}/raw$`, "u")) || !validUrl(downloadUrl, privateOrigin, new RegExp(`^/documents/${documentId}/download$`, "u"))) {
 		return failure(new CfPasteError("invalid-response", "CF Paste returned an unexpected private URL origin or path"));
 	}
 	if (publicationId === null) {
-		if (record.publicUrl !== null) return failure(new CfPasteError("invalid-response", "CF Paste returned inconsistent Publication fields"));
-	} else if (publicOrigin === undefined || !validUrl(record.publicUrl, publicOrigin, new RegExp(`^/${publicationId}$`, "u"))) {
+		if (publicUrl !== null) return failure(new CfPasteError("invalid-response", "CF Paste returned inconsistent Publication fields"));
+	} else if (publicOrigin === undefined || !validUrl(publicUrl, publicOrigin, new RegExp(`^/${publicationId}$`, "u"))) {
 		return failure(new CfPasteError("invalid-response", "CF Paste returned an unexpected public URL origin or path"));
 	}
-	return success({ documentId, revisionId, publicationId, privateUrl: record.privateUrl, rawUrl: record.rawUrl, downloadUrl: record.downloadUrl, publicUrl: record.publicUrl as string | null });
+	return success({ documentId, revisionId, publicationId, privateUrl, rawUrl, downloadUrl, publicUrl });
 }
 
 async function send(
