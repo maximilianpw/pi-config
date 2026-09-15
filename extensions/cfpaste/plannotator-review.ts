@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, open, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -59,42 +59,53 @@ function decodeUtf8(bytes: Uint8Array): Result<string, CfPasteError> {
 	}
 }
 
+function isCancelled(signal: AbortSignal | undefined): boolean {
+	return signal?.aborted === true;
+}
+
 export function createPlannotatorReviewer(executor: ProcessExecutor = processExecutor): PlannotatorReviewer {
 	return {
 		async reviewFile(bytes, signal) {
-			const directory = await mkdtemp(join(tmpdir(), "pi-cfpaste-review-"));
+			if (isCancelled(signal)) return failure(new CfPasteError("rejected-response", "Plannotator review was cancelled"));
+			let directory: string | undefined;
 			try {
+				directory = await mkdtemp(join(tmpdir(), "pi-cfpaste-review-"));
 				const sourcePath = join(directory, "review.md");
-				const resultPath = join(directory, "approved.md");
-				const source = await open(sourcePath, "wx", 0o600);
-				await source.writeFile(bytes);
-				await source.close();
+				const resultPath = join(directory, "decision.json");
+				await writeFile(sourcePath, bytes, { flag: "wx", mode: 0o600 });
 				const process = await executor.execute("plannotator", ["annotate", sourcePath, "--gate", "--json", "--require-approval", "--result-file", resultPath], { ...(signal === undefined ? {} : { signal }) });
+				if (isCancelled(signal)) return failure(new CfPasteError("rejected-response", "Plannotator review was cancelled"));
 				if (process.code === 2) return failure(new CfPasteError("rejected-response", "Plannotator could not start the approval gate"));
+				if (process.code !== 0 && process.code !== 1) return failure(new CfPasteError("invalid-response", "Plannotator review returned an unexpected exit status"));
 				const parsed = parseDecision(process.stdout);
 				if (!parsed.ok) return parsed;
+				const expectedCode = parsed.value.decision === "approved" ? 0 : 1;
+				if (process.code !== expectedCode) return failure(new CfPasteError("invalid-response", "Plannotator decision did not match its exit status"));
 				if (parsed.value.decision === "dismissed") return success({ decision: "dismissed" });
 				if (parsed.value.decision === "annotated") return success({ decision: "annotated", feedback: parsed.value.feedback ?? "" });
-				if (process.code !== 0) return failure(new CfPasteError("invalid-response", "Plannotator approval returned an inconsistent exit status"));
-				const reviewed = decodeUtf8(await readFile(resultPath));
+				const reviewed = decodeUtf8(await readFile(sourcePath));
 				if (!reviewed.ok) return reviewed;
 				const approvalNotes = parsed.value.approvalNotes ?? parsed.value.feedback;
 				return success({ decision: "approved", markdown: reviewed.value, ...(approvalNotes === undefined ? {} : { approvalNotes }) });
 			} catch (cause) {
 				return failure(new CfPasteError("rejected-response", "Plannotator review failed", cause));
 			} finally {
-				await rm(directory, { recursive: true, force: true });
+				if (directory !== undefined) await rm(directory, { recursive: true, force: true });
 			}
 		},
 		async reviewLatest(markdown, signal) {
+			if (isCancelled(signal)) return failure(new CfPasteError("rejected-response", "Plannotator review was cancelled"));
 			const bytes = new TextEncoder().encode(markdown);
 			try {
 				const process = await executor.execute("plannotator", ["annotate-last", "--stdin", "--gate", "--json"], { input: bytes, ...(signal === undefined ? {} : { signal }) });
+				if (isCancelled(signal)) return failure(new CfPasteError("rejected-response", "Plannotator review was cancelled"));
 				if (process.code === 2) return failure(new CfPasteError("rejected-response", "Plannotator could not start the approval gate"));
+				if (process.code !== 0 && process.code !== 1) return failure(new CfPasteError("invalid-response", "Plannotator review returned an unexpected exit status"));
 				const parsed = parseDecision(process.stdout);
 				if (!parsed.ok) return parsed;
 				if (parsed.value.decision === "dismissed") return success({ decision: "dismissed" });
 				if (parsed.value.decision === "annotated") return success({ decision: "annotated", feedback: parsed.value.feedback ?? "" });
+				if (process.code !== 0) return failure(new CfPasteError("invalid-response", "Plannotator approval returned an inconsistent exit status"));
 				const approvalNotes = parsed.value.approvalNotes ?? parsed.value.feedback;
 				return success({ decision: "approved", markdown, ...(approvalNotes === undefined ? {} : { approvalNotes }) });
 			} catch (cause) {
