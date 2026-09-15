@@ -9,6 +9,8 @@
   "scripts": {
     "typecheck": "tsc --project tsconfig.json --pretty false",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "overlay:mcp-formats": "node scripts/apply-pi-mcp-format-overlay.mjs",
+    "overlay:mcp-formats:check": "node scripts/apply-pi-mcp-format-overlay.mjs --check",
     "check": "bun run typecheck && bun run test && bun run --filter pi-save-md-extension check && bun run --filter pi-web-tools-extension check && bun run --filter pi-ask-user-extension check && bun run --filter pi-skill-toggle check && bun run --filter pi-worktrees-extension check && bun run --filter pi-executor-extension check && bun run --filter pi-subagents-extension check && bun run --filter pi-cfpaste-extension check"
   },
   "dependencies": {
