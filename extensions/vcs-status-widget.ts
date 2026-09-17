@@ -1,6 +1,12 @@
 import { execFile } from "node:child_process";
+import { basename, parse, resolve } from "node:path";
 import { promisify } from "node:util";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  Theme,
+  ThemeColor,
+} from "@earendil-works/pi-coding-agent";
 
 const execFileAsync = promisify(execFile);
 const WIDGET_ID = "vcs-status-widget";
@@ -37,6 +43,65 @@ async function isGitRepo(cwd: string, runCommand: RunVcsCommand) {
 function changedFileLabel(count: number) {
   const fileLabel = count === 1 ? "file" : "files";
   return `${count} changed ${fileLabel}`;
+}
+
+export function projectName(cwd: string, home = process.env.HOME ?? process.env.USERPROFILE) {
+  const resolvedCwd = resolve(cwd);
+  if (home && resolvedCwd === resolve(home)) return "~";
+  return basename(resolvedCwd) || parse(resolvedCwd).root;
+}
+
+function separator(theme: Theme) {
+  return ` ${theme.fg("dim", "›")} `;
+}
+
+function colorVcsSummary(summary: string, theme: Theme) {
+  const parts = summary.split(" · ");
+  const head = parts.shift() ?? summary;
+  let coloredHead = theme.fg("muted", head);
+  if (head.startsWith(" ")) {
+    coloredHead = `${theme.fg("warning", "")} ${theme.fg("success", head.replace(/^\s+/u, ""))}`;
+  } else if (head.startsWith("󱗆 ")) {
+    coloredHead = `${theme.fg("warning", "󱗆")} ${theme.fg("success", head.replace(/^󱗆\s+/u, ""))}`;
+  }
+
+  return [coloredHead, ...parts.map((part, index) =>
+    theme.fg(index === parts.length - 1 ? "dim" : "muted", part),
+  )].join(` ${theme.fg("dim", "·")} `);
+}
+
+type ThinkingLevel = Exclude<ExtensionContext["thinkingLevel"], undefined>;
+
+const RAINBOW_COLORS = [
+  "error",
+  "warning",
+  "success",
+  "mdLinkUrl",
+  "accent",
+  "mdHeading",
+  "customMessageLabel",
+] satisfies readonly ThemeColor[];
+
+function rainbowText(text: string, theme: Theme) {
+  return [...text]
+    .map((character, index) => theme.fg(RAINBOW_COLORS[index % RAINBOW_COLORS.length]!, character))
+    .join("");
+}
+
+export function formatStatusBar(
+  ctx: ExtensionContext,
+  vcsSummary: string | undefined,
+  theme: Theme = ctx.ui.theme,
+) {
+  const modelName = ctx.model?.name ?? ctx.model?.id ?? "no-model";
+  const model = theme.fg("customMessageLabel", modelName);
+  const thinkingLevel: ThinkingLevel = ctx.thinkingLevel ?? "off";
+  const thinking = ctx.model?.reasoning
+    ? separator(theme) + rainbowText(`think:${thinkingLevel}`, theme)
+    : "";
+  const project = separator(theme) + `${theme.fg("mdLink", "")} ${theme.fg("success", projectName(ctx.cwd))}`;
+  const vcs = vcsSummary ? separator(theme) + colorVcsSummary(vcsSummary, theme) : "";
+  return model + thinking + project + vcs;
 }
 
 function countJjChangedFiles(status: string) {
@@ -95,7 +160,7 @@ export async function updateWidget(
   try {
     const summary = await summarize(ctx.cwd);
     if (!isCurrent()) return;
-    ctx.ui.setWidget(WIDGET_ID, summary ? [summary] : undefined);
+    ctx.ui.setWidget(WIDGET_ID, [formatStatusBar(ctx, summary, ctx.ui.theme)]);
   } catch {
     if (!isCurrent()) return;
     ctx.ui.setWidget(WIDGET_ID, undefined);

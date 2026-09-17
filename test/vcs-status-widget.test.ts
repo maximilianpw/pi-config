@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import {
   createRefreshCoordinator,
   createVcsStatusWidget,
+  formatStatusBar,
   getSummary,
+  projectName,
   updateWidget,
   type RunVcsCommand,
 } from "../extensions/vcs-status-widget.ts";
@@ -23,7 +25,39 @@ function context(cwd: string, writes: Array<string[] | undefined> = []) {
   return {
     cwd,
     hasUI: true,
+    model: {
+      id: "gpt-5.6-luna",
+      name: "GPT 5.6 Luna",
+      reasoning: true,
+      contextWindow: 272_000,
+    },
+    thinkingLevel: "high",
+    getContextUsage() {
+      return { tokens: 105_536, contextWindow: 272_000, percent: 38.8 };
+    },
+    sessionManager: {
+      getEntries() {
+        return [{
+          type: "message",
+          message: {
+            role: "assistant",
+            usage: {
+              input: 103_000,
+              output: 18_000,
+              cacheRead: 4_100_000,
+              cacheWrite: 0,
+              cost: { total: 0 },
+            },
+          },
+        }];
+      },
+    },
     ui: {
+      theme: {
+        fg(_color: string, text: string) {
+          return text;
+        },
+      },
       setWidget(_id: string, value: string[] | undefined) {
         writes.push(value);
       },
@@ -154,7 +188,7 @@ test("stop and restart invalidate old work and suppress post-shutdown writes", a
 
   newSummary.resolve("current");
   await newRequest;
-  assert.deepEqual(writes, [["current"]]);
+  assert.deepEqual(writes, [["GPT 5.6 Luna › think:high ›  new › current"]]);
 });
 
 test("updateWidget skips work without UI and suppresses stale success and failure", async () => {
@@ -172,6 +206,35 @@ test("updateWidget skips work without UI and suppresses stale success and failur
     throw new Error("failed");
   });
   assert.deepEqual(writes, []);
+});
+
+test("formats model, reasoning, project, and VCS into the prompt status bar", () => {
+  assert.equal(
+    formatStatusBar(context("/Users/max/pi-config"), " main · 7 changed files"),
+    "GPT 5.6 Luna › think:high ›  pi-config ›  main · 7 changed files",
+  );
+  assert.equal(projectName("/Users/max", "/Users/max"), "~");
+});
+
+test("colors the prompt status bar by semantic segment", () => {
+  const taggedTheme = {
+    fg(color: string, text: string) {
+      return `<${color}>${text}</${color}>`;
+    },
+  } as unknown as Theme;
+  const line = formatStatusBar(
+    context("/Users/max/pi-config"),
+    " main · 7 changed files",
+    taggedTheme,
+  );
+  assert.match(line, /<customMessageLabel>GPT 5\.6 Luna<\/customMessageLabel>/);
+  assert.match(
+    line,
+    /<error>t<\/error><warning>h<\/warning><success>i<\/success><mdLinkUrl>n<\/mdLinkUrl><accent>k<\/accent>/,
+  );
+  assert.match(line, /<mdLink><\/mdLink> <success>pi-config<\/success>/);
+  assert.match(line, /<warning><\/warning> <success>main<\/success>/);
+  assert.match(line, /<dim>7 changed files<\/dim>/);
 });
 
 test("getSummary preserves jj and git display behavior", async () => {

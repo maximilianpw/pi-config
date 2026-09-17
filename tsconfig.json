@@ -12,6 +12,7 @@
   "files": [
     "cli/cliproxyapi-quota.ts",
     "cli/cliproxyapi-util.ts",
+    "extensions/model-free-footer.ts",
     "extensions/cliproxyapi-models.ts",
     "extensions/cliproxyapi-usage.ts",
     "extensions/cliproxyapi/client.ts",
@@ -28,6 +29,7 @@
     "extensions/vcs-status-widget.ts",
     "extensions/whimsical.ts",
     "extensions/worker-configuration-guard.ts",
+    "test/model-free-footer.test.ts",
     "test/cliproxyapi-models.test.ts",
     "test/cliproxyapi-usage.test.ts",
     "test/cloudflare-deployment-allowlist.test.ts",
