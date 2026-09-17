@@ -123,7 +123,10 @@ test("uses Astra from the fallback catalog when discovery fails", async () => {
 	};
 	console.warn = () => {};
 	try {
-		await cliProxyAPIModels(pi);
+		await cliProxyAPIModels(pi, {
+			CLIPROXYAPI_ROOT_URL: "https://cliproxy.example.test",
+			CLIPROXYAPI_API_KEY: "test-key",
+		});
 	} finally {
 		globalThis.fetch = originalFetch;
 		console.warn = originalWarn;
@@ -185,7 +188,10 @@ test("compaction rewrites Sol Fast to the upstream model and priority tier", asy
 		);
 	};
 	try {
-		await cliProxyAPIModels(pi);
+		await cliProxyAPIModels(pi, {
+			CLIPROXYAPI_ROOT_URL: "https://cliproxy.example.test",
+			CLIPROXYAPI_API_KEY: "test-key",
+		});
 	} finally {
 		globalThis.fetch = originalFetch;
 	}

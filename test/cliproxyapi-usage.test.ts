@@ -13,9 +13,47 @@ import {
 	parseCodexQuota,
 	parseXAIQuota,
 	quotaProviderForModel,
+	resolveCLIProxyAPIConnection,
 	type CLIProxyAPIClient,
 } from "../extensions/cliproxyapi/client.ts";
 import { formatCLIProxyAPIQuotaText } from "../extensions/cliproxyapi-usage.ts";
+
+test("requires explicit CLIProxyAPI routing instead of falling back to localhost", () => {
+	assert.throws(
+		() => resolveCLIProxyAPIConnection({}, { configFilePath: null }),
+		/requires CLIPROXYAPI_ROOT_URL; refusing to fall back to a localhost proxy/,
+	);
+	assert.throws(
+		() => resolveCLIProxyAPIConnection(
+			{ CLIPROXYAPI_ROOT_URL: "https://proxy.example.test" },
+			{ configFilePath: null },
+		),
+		/requires CLIPROXYAPI_API_KEY or CLIPROXYAPI_API_KEY_FILE/,
+	);
+});
+
+test("resolves an explicit CLIProxyAPI endpoint and runtime token file", () => {
+	assert.deepEqual(
+		resolveCLIProxyAPIConnection({}, {
+			configFilePath: "/home/test/.config/cliproxyapi/client.json",
+			readTextFile: (path) => {
+				if (path === "/home/test/.config/cliproxyapi/client.json") {
+					return JSON.stringify({
+						rootUrl: "https://proxy.example.test/",
+						apiKeyFile: "/run/secrets/cliproxyapi-key",
+					});
+				}
+				assert.equal(path, "/run/secrets/cliproxyapi-key");
+				return "test-key\n";
+			},
+		}),
+		{
+			rootUrl: "https://proxy.example.test",
+			baseUrl: "https://proxy.example.test/v1",
+			apiKey: "test-key",
+		},
+	);
+});
 
 function codexQuota(usedPercent: number, allowed = true) {
 	return {

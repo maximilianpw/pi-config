@@ -10,13 +10,10 @@ import type {
 import { streamSimple as streamSimpleByApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 import {
-	CLIPROXYAPI_API_KEY as API_KEY,
-	CLIPROXYAPI_BASE_URL as BASE_URL,
 	CLIPROXYAPI_PROVIDER_ID as PROVIDER_ID,
+	resolveCLIProxyAPIConnection,
+	type CLIProxyAPIEnvironment,
 } from "./cliproxyapi/client.ts";
-
-const MODELS_URL = `${BASE_URL}/models`;
-const CODEX_MODELS_URL = `${MODELS_URL}?client_version=pi`;
 const API = "openai-responses";
 const SOL_MODEL_ID = "gpt-5.6-sol";
 const SOL_FAST_MODEL_ID = `${SOL_MODEL_ID}-fast`;
@@ -238,14 +235,19 @@ async function fetchCatalog(url: string, headers: Record<string, string>, signal
 	return response.json();
 }
 
-async function fetchModels(signal: AbortSignal): Promise<ProviderModelConfig[]> {
+async function fetchModels(
+	baseUrl: string,
+	apiKey: string,
+	signal: AbortSignal,
+): Promise<ProviderModelConfig[]> {
+	const modelsUrl = `${baseUrl}/models`;
 	const headers = {
 		accept: "application/json",
-		authorization: `Bearer ${API_KEY}`,
+		authorization: `Bearer ${apiKey}`,
 	};
 	const [catalogPayload, reasoningPayload] = await Promise.all([
-		fetchCatalog(CODEX_MODELS_URL, headers, signal),
-		fetchCatalog(MODELS_URL, { ...headers, "user-agent": "grok-shell/pi" }, signal),
+		fetchCatalog(`${modelsUrl}?client_version=pi`, headers, signal),
+		fetchCatalog(modelsUrl, { ...headers, "user-agent": "grok-shell/pi" }, signal),
 	]);
 	const reasoningCatalog = parseCLIProxyAPIReasoningCatalog(reasoningPayload);
 	return addSolFastVariant(
@@ -253,10 +255,18 @@ async function fetchModels(signal: AbortSignal): Promise<ProviderModelConfig[]> 
 	);
 }
 
-export default async function cliProxyAPIModels(pi: ExtensionAPI): Promise<void> {
+export default async function cliProxyAPIModels(
+	pi: ExtensionAPI,
+	environment: CLIProxyAPIEnvironment = process.env,
+): Promise<void> {
+	const connection = resolveCLIProxyAPIConnection(environment);
 	let models = FALLBACK_MODELS;
 	try {
-		models = await fetchModels(AbortSignal.timeout(5_000));
+		models = await fetchModels(
+			connection.baseUrl,
+			connection.apiKey,
+			AbortSignal.timeout(5_000),
+		);
 	} catch (error) {
 		console.warn(
 			`CLIProxyAPI model discovery failed during startup; using the default catalog: ${error instanceof Error ? error.message : String(error)}`,
@@ -265,8 +275,8 @@ export default async function cliProxyAPIModels(pi: ExtensionAPI): Promise<void>
 
 	pi.registerProvider(PROVIDER_ID, {
 		name: "CLIProxyAPI",
-		baseUrl: BASE_URL,
-		apiKey: API_KEY,
+		baseUrl: connection.baseUrl,
+		apiKey: connection.apiKey,
 		api: API,
 		models,
 		streamSimple: createCLIProxyAPIFastStream(),

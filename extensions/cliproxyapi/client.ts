@@ -4,14 +4,88 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const CLIPROXYAPI_PROVIDER_ID = "cliproxyapi";
-export const CLIPROXYAPI_ROOT_URL =
-	process.env.CLIPROXYAPI_ROOT_URL ?? "http://127.0.0.1:8317";
-export const CLIPROXYAPI_BASE_URL = `${CLIPROXYAPI_ROOT_URL}/v1`;
-export const CLIPROXYAPI_API_KEY =
-	process.env.CLIPROXYAPI_API_KEY ??
-	(process.env.CLIPROXYAPI_API_KEY_FILE
-		? readFileSync(process.env.CLIPROXYAPI_API_KEY_FILE, "utf8").trim()
-		: "cliproxyapi-local-claudex");
+
+export interface CLIProxyAPIConnection {
+	rootUrl: string;
+	baseUrl: string;
+	apiKey: string;
+}
+
+export interface CLIProxyAPIEnvironment {
+	CLIPROXYAPI_ROOT_URL?: string;
+	CLIPROXYAPI_API_KEY?: string;
+	CLIPROXYAPI_API_KEY_FILE?: string;
+}
+
+type ReadTextFile = (path: string) => string;
+
+export interface ResolveCLIProxyAPIConnectionOptions {
+	configFilePath?: string | null;
+	readTextFile?: ReadTextFile;
+}
+
+function requiredNonEmpty(value: string | undefined, name: string): string {
+	const normalized = value?.trim();
+	if (!normalized) {
+		throw new Error(
+			`CLIProxyAPI configuration requires ${name}; refusing to fall back to a localhost proxy`,
+		);
+	}
+	return normalized;
+}
+
+function readClientEnvironment(
+	configFilePath: string | null,
+	readTextFile: ReadTextFile,
+): CLIProxyAPIEnvironment {
+	if (configFilePath === null) return {};
+	try {
+		const payload: unknown = JSON.parse(readTextFile(configFilePath));
+		if (!isRecord(payload)) {
+			throw new Error("CLIProxyAPI client configuration must be an object");
+		}
+		return {
+			CLIPROXYAPI_ROOT_URL:
+				typeof payload.rootUrl === "string" ? payload.rootUrl : undefined,
+			CLIPROXYAPI_API_KEY_FILE:
+				typeof payload.apiKeyFile === "string" ? payload.apiKeyFile : undefined,
+		};
+	} catch (error) {
+		if (isRecord(error) && error.code === "ENOENT") return {};
+		throw error;
+	}
+}
+
+export function resolveCLIProxyAPIConnection(
+	environment: CLIProxyAPIEnvironment = process.env,
+	options: ResolveCLIProxyAPIConnectionOptions = {},
+): CLIProxyAPIConnection {
+	const readTextFile = options.readTextFile ?? ((path) => readFileSync(path, "utf8"));
+	const fileEnvironment = readClientEnvironment(
+		options.configFilePath === undefined
+			? join(homedir(), ".config", "cliproxyapi", "client.json")
+			: options.configFilePath,
+		readTextFile,
+	);
+	const rootUrl = requiredNonEmpty(
+		environment.CLIPROXYAPI_ROOT_URL ?? fileEnvironment.CLIPROXYAPI_ROOT_URL,
+		"CLIPROXYAPI_ROOT_URL",
+	).replace(/\/$/, "");
+	const directApiKey = environment.CLIPROXYAPI_API_KEY?.trim();
+	const apiKey = directApiKey
+		? directApiKey
+		: readTextFile(
+				requiredNonEmpty(
+					environment.CLIPROXYAPI_API_KEY_FILE ??
+						fileEnvironment.CLIPROXYAPI_API_KEY_FILE,
+					"CLIPROXYAPI_API_KEY or CLIPROXYAPI_API_KEY_FILE",
+				),
+			).trim();
+	if (!apiKey) {
+		throw new Error("CLIProxyAPI API key is empty");
+	}
+	return { rootUrl, baseUrl: `${rootUrl}/v1`, apiKey };
+}
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
