@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -514,6 +514,81 @@ export class DesignSystemStack extends Alchemy.Stack<DesignSystemStack, {}>()(DE
 	);
 });
 
+function makeBunWorkspace(workspaces: unknown = ["apps/*", "packages/*"]) {
+	const root = mkdtempSync(join(tmpdir(), "cloudflare-bun-workspace-"));
+	const api = join(root, "apps", "api");
+	mkdirSync(api, { recursive: true });
+	mkdirSync(join(root, "packages"));
+	writeFileSync(join(root, "package.json"), JSON.stringify({
+		name: "bun-workspace-fixture",
+		workspaces,
+		scripts: {
+			"check:api": "bun run --filter @example/api type-check",
+			"ship:api": "bun run --filter @example/api ship",
+		},
+	}));
+	writeFileSync(join(api, "package.json"), JSON.stringify({
+		name: "@example/api",
+		scripts: { "type-check": "tsc --noEmit", ship: "wrangler deploy --env production" },
+	}));
+	writeFileSync(join(api, "wrangler.jsonc"), JSON.stringify({ name: "example-api", env: { production: {} } }));
+	return { root, api };
+}
+
+test("resolves Bun workspace checks without granting deployment permission", (t) => {
+	const workspace = makeBunWorkspace();
+	t.after(() => rmSync(workspace.root, { recursive: true, force: true }));
+	const denied = makePolicy({});
+	for (const cwd of [workspace.root, workspace.api]) {
+		for (const selector of ["@example/api", "apps/api", "./apps/api"]) {
+			const result = decide(`bun run --filter ${selector} type-check`, cwd, denied);
+			assert.notEqual(result._tag, "block", JSON.stringify(result));
+		}
+	}
+	assert.notEqual(decide("bun run check:api", workspace.root, denied)._tag, "block");
+	assert.equal(decide("bun run ship:api", workspace.root, denied)._tag, "block");
+	assert.equal(decide("bun run ship:api", workspace.root, makePolicy({ "example-api": ["production"] }))._tag, "allow");
+});
+
+test("resolves Bun object-form workspaces and literal package paths", (t) => {
+	const workspace = makeBunWorkspace({ packages: ["./apps/api/"] });
+	t.after(() => rmSync(workspace.root, { recursive: true, force: true }));
+	assert.notEqual(decide("bun run --filter @example/api type-check", workspace.root, makePolicy({}))._tag, "block");
+});
+
+for (const workspaces of [null, [], "apps/*", [42], ["!apps/api"], ["apps/**"], ["apps/{api,web}"], ["../apps/*"], ["/apps/*"], ["apps/a*"], { packages: "apps/*" }]) {
+	test(`rejects unsupported Bun workspace declaration ${JSON.stringify(workspaces)}`, (t) => {
+		const workspace = makeBunWorkspace(workspaces);
+		t.after(() => rmSync(workspace.root, { recursive: true, force: true }));
+		assert.equal(decide("bun run --filter @example/api type-check", workspace.root, makePolicy({}))._tag, "block");
+	});
+}
+
+test("Bun workspace resolution fails closed on malformed manifests and ambiguous or missing selectors", (t) => {
+	const workspace = makeBunWorkspace();
+	t.after(() => rmSync(workspace.root, { recursive: true, force: true }));
+	const denied = makePolicy({});
+	assert.equal(decide("bun run --filter @example/missing type-check", workspace.root, denied)._tag, "block");
+	assert.equal(decide("bun run --filter '@example/*' deploy", workspace.root, denied)._tag, "block");
+	const duplicate = join(workspace.root, "packages", "duplicate");
+	mkdirSync(duplicate);
+	writeFileSync(join(duplicate, "package.json"), JSON.stringify({ name: "@example/api", scripts: { "type-check": "tsc" } }));
+	assert.equal(decide("bun run --filter @example/api type-check", workspace.root, denied)._tag, "block");
+	writeFileSync(join(workspace.root, "package.json"), "{");
+	assert.equal(decide("bun run --filter @example/api type-check", workspace.root, denied)._tag, "block");
+});
+
+test("Bun uses its own workspace inventory even when pnpm declares another package", (t) => {
+	const workspace = makeBunWorkspace();
+	t.after(() => rmSync(workspace.root, { recursive: true, force: true }));
+	const decoy = join(workspace.root, "decoy");
+	mkdirSync(decoy);
+	writeFileSync(join(decoy, "package.json"), JSON.stringify({ name: "@example/api", scripts: { ship: "tsc" } }));
+	writeFileSync(join(workspace.root, "pnpm-workspace.yaml"), "packages:\n  - decoy\n");
+	assert.equal(decide("bun run --filter @example/api ship", workspace.root, makePolicy({}))._tag, "block");
+	assert.notEqual(decide("pnpm --filter @example/api run ship", workspace.root, makePolicy({}))._tag, "block");
+});
+
 test("resolves complete pnpm workspace deployment script chains", () => {
 	const workspace = makeAlchemyWorkspace();
 	const policy = makeAlchemyPolicy([
@@ -643,6 +718,40 @@ test("requires every deployment segment to be independently authorized", () => {
 	if (decision._tag === "block") assert.match(decision.reason, /unknown Alchemy project/);
 });
 
+test("expands home-relative Alchemy project paths", () => {
+	const workspace = makeAlchemyWorkspace();
+	for (const project of [
+		"~/alchemy.run.ts",
+		"$HOME/alchemy.run.ts",
+		"${HOME}/alchemy.run.ts",
+	]) {
+		const parsed = parseCloudflareDeploymentPolicy(
+			{
+				version: 2,
+				workers: {},
+				alchemy: [{ project, stages: ["prod"] }],
+			},
+			workspace.designSystem,
+		);
+		assert.equal(parsed._tag, "ok", project);
+		if (parsed._tag === "ok" && parsed.value.version === 2)
+			assert.equal(
+				parsed.value.alchemy[0]?.project,
+				realpathSync(join(workspace.designSystem, "alchemy.run.ts")),
+			);
+	}
+});
+
+test("rejects relative Alchemy project paths without a home prefix", () => {
+	const parsed = parseCloudflareDeploymentPolicy({
+		version: 2,
+		workers: {},
+		alchemy: [{ project: "Local/example/alchemy.run.ts", stages: ["prod"] }],
+	});
+	assert.equal(parsed._tag, "err");
+	if (parsed._tag === "err") assert.match(parsed.error.message, /must start with/);
+});
+
 test("canonicalizes Alchemy policy and command paths through symlinks", () => {
 	const workspace = makeAlchemyWorkspace();
 	const alias = join(workspace.root, "design-system-alias");
@@ -700,27 +809,23 @@ test("detects high-confidence bash mutations of the global policy", () => {
 	);
 });
 
-test("the checked-in policy narrowly recognizes CF Paste production", () => {
+test("the checked-in policy does not hardcode a user's home directory", () => {
 	const policyJson: unknown = JSON.parse(
 		readFileSync(join(process.cwd(), "cloudflare-deployment-allowlist.json"), "utf8"),
 	);
-	const parsed = parseCloudflareDeploymentPolicy(policyJson);
-	assert.equal(parsed._tag, "ok");
-	if (parsed._tag !== "ok") return;
-	assert.equal(
-		decide(
-			"alchemy deploy --stage production",
-			"/Users/max-vev/Local/cf-paste",
-			parsed.value,
-		)._tag,
-		"allow",
-	);
-	assert.equal(parsed.value.version, 2);
-	if (parsed.value.version === 2) {
-		assert.deepEqual(parsed.value.alchemy, [{
-			project: "/Users/max-vev/Local/cf-paste/alchemy.run.ts",
-			stages: new Set(["production"]),
-			stack: "CfPaste",
-		}]);
+	assert.equal(typeof policyJson, "object");
+	assert.notEqual(policyJson, null);
+	assert.equal(Array.isArray(policyJson), false);
+	if (policyJson === null || Array.isArray(policyJson) || typeof policyJson !== "object") return;
+	const alchemy = Reflect.get(policyJson, "alchemy");
+	assert.equal(Array.isArray(alchemy), true);
+	if (!Array.isArray(alchemy)) return;
+	for (const entry of alchemy) {
+		assert.equal(typeof entry, "object");
+		assert.notEqual(entry, null);
+		if (entry === null || Array.isArray(entry) || typeof entry !== "object") continue;
+		const project = Reflect.get(entry, "project");
+		assert.equal(typeof project, "string");
+		assert.match(project, /^(?:~|\$HOME|\$\{HOME\})\//);
 	}
 });

@@ -197,6 +197,13 @@ function canonicalExistingPath(path: string): Result<string, CloudflareDeploymen
 	}
 }
 
+function resolvePolicyProjectPath(path: string, homeDirectory: string): string | undefined {
+	for (const prefix of ["~/", "$HOME/", "${HOME}/"] as const) {
+		if (path.startsWith(prefix)) return resolve(homeDirectory, path.slice(prefix.length));
+	}
+	return isAbsolute(path) ? path : undefined;
+}
+
 function findCanonicalRepositoryRoot(path: string): string | undefined {
 	let current: string;
 	try {
@@ -236,6 +243,7 @@ function isAllowlistedRepositoryWorkingDirectory(
 /** Parses the versioned global policy; malformed and unknown policy shapes are errors. */
 export function parseCloudflareDeploymentPolicy(
 	input: unknown,
+	homeDirectory = homedir(),
 ): Result<CloudflareDeploymentPolicy, CloudflareDeploymentBlocked> {
 	if (!isStringRecord(input) || (input.version !== 1 && input.version !== 2)) {
 		return blocked(
@@ -255,16 +263,20 @@ export function parseCloudflareDeploymentPolicy(
 		if (
 			!isStringRecord(entry) ||
 			typeof entry.project !== "string" ||
-			!isAbsolute(entry.project) ||
 			(entry.stack !== undefined &&
 				(typeof entry.stack !== "string" ||
 					entry.stack.length === 0 ||
 					entry.stack.trim() !== entry.stack))
 		)
 			return blocked(
-				`invalid ${POLICY_FILE_NAME} Alchemy entry at index ${index}; project must be an absolute existing entrypoint path.`,
+				`invalid ${POLICY_FILE_NAME} Alchemy entry at index ${index}; project must be an absolute or home-relative existing entrypoint path.`,
 			);
-		const project = canonicalExistingPath(entry.project);
+		const projectPath = resolvePolicyProjectPath(entry.project, homeDirectory);
+		if (projectPath === undefined)
+			return blocked(
+				`invalid ${POLICY_FILE_NAME} Alchemy entry at index ${index}; project must start with /, ~/, $HOME/, or \${HOME}/.`,
+			);
+		const project = canonicalExistingPath(projectPath);
 		if (project._tag === "err") return project;
 		if (projects.has(project.value))
 			return blocked(
@@ -639,20 +651,82 @@ function workspacePackagePaths(
 	return { _tag: "ok", value: packagePaths };
 }
 
+function resolveWorkspaceDefinition(
+	cwd: string,
+	runner: PackageTask["runner"],
+): Result<
+	{ readonly root: string; readonly patterns: readonly string[] },
+	CloudflareDeploymentBlocked
+> {
+	// Bun/npm/Yarn resolve package.json workspaces, not a possibly different
+	// pnpm inventory. Keep pnpm and Vite task-runner resolution unchanged.
+	if (runner === "pnpm" || runner === "vp" || runner === "vpr") {
+		const workspacePath = findFileUpward(cwd, ["pnpm-workspace.yaml"]);
+		if (workspacePath !== undefined) {
+			const patterns = readPnpmWorkspacePatterns(workspacePath);
+			if (patterns._tag === "err") return patterns;
+			return { _tag: "ok", value: { root: dirname(workspacePath), patterns: patterns.value } };
+		}
+		if (runner === "pnpm") return blocked("script resolution found no pnpm-workspace.yaml.");
+	}
+
+	for (let directory = resolve(cwd); ; directory = dirname(directory)) {
+		const manifestPath = join(directory, "package.json");
+		if (existsSync(manifestPath)) {
+			let manifest: unknown;
+			try {
+				manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+			} catch {
+				return blocked(`script resolution cannot read workspace manifest ${manifestPath}.`);
+			}
+			if (!isStringRecord(manifest))
+				return blocked(`script resolution found an invalid workspace manifest ${manifestPath}.`);
+			if (Object.hasOwn(manifest, "workspaces")) {
+				const declaration = manifest.workspaces;
+				const entries = isStringRecord(declaration) ? declaration.packages : declaration;
+				if (
+					!Array.isArray(entries) ||
+					entries.length === 0 ||
+					entries.length > MAX_WORKSPACE_PACKAGES
+				)
+					return blocked(
+						`script resolution requires a nonempty bounded workspace pattern array in ${manifestPath}.`,
+					);
+				const patterns: string[] = [];
+				for (const entry of entries) {
+					if (typeof entry !== "string")
+						return blocked(`script resolution requires string workspace patterns in ${manifestPath}.`);
+					const pattern = entry.replace(/^\.\//, "").replace(/\/$/, "");
+					const segments = pattern.split("/");
+					if (
+						segments.some((segment) =>
+							segment === ".." || segment === "." || !/^(?:[A-Za-z0-9_@.-]+|\*)$/.test(segment),
+						) ||
+						segments.filter((segment) => segment === "*").length > 1
+					)
+						return blocked(
+							`script resolution cannot safely interpret workspace package pattern ${JSON.stringify(entry)}.`,
+						);
+					patterns.push(pattern);
+				}
+				return { _tag: "ok", value: { root: directory, patterns } };
+			}
+		}
+		if (dirname(directory) === directory) break;
+	}
+	return blocked("script resolution found no package.json workspace declaration.");
+}
+
 function resolveWorkspacePackagePath(
 	cwd: string,
 	filter: string,
+	runner: PackageTask["runner"],
 	cache: DeploymentEvaluationCache | undefined,
 ): Result<string, CloudflareDeploymentBlocked> {
-	const workspacePath = findFileUpward(cwd, ["pnpm-workspace.yaml"]);
-	if (workspacePath === undefined)
-		return blocked(
-			`script resolution cannot apply workspace filter ${JSON.stringify(filter)} without pnpm-workspace.yaml.`,
-		);
-	const patterns = readPnpmWorkspacePatterns(workspacePath);
-	if (patterns._tag === "err") return patterns;
-	const workspaceRoot = dirname(workspacePath);
-	const candidates = workspacePackagePaths(workspaceRoot, patterns.value);
+	const workspace = resolveWorkspaceDefinition(cwd, runner);
+	if (workspace._tag === "err") return workspace;
+	const workspaceRoot = workspace.value.root;
+	const candidates = workspacePackagePaths(workspaceRoot, workspace.value.patterns);
 	if (candidates._tag === "err") return candidates;
 	const matches: string[] = [];
 	for (const candidate of candidates.value) {
@@ -842,7 +916,9 @@ function resolvePackageTaskCommand(
 	if (task.filter === undefined)
 		packagePath = findFileUpward(task.packageCwd, ["package.json"]);
 	else {
-		const workspacePackage = resolveWorkspacePackagePath(task.packageCwd, task.filter, cache);
+		const workspacePackage = resolveWorkspacePackagePath(
+			task.packageCwd, task.filter, task.runner, cache,
+		);
 		if (workspacePackage._tag === "err") return workspacePackage;
 		packagePath = workspacePackage.value;
 	}
