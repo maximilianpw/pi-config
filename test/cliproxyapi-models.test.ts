@@ -107,7 +107,7 @@ test("adds a Fast Mode variant for Sol only", () => {
 	assert.equal(models[1]?.name, "GPT 5.6 Sol via CLIProxyAPI (Fast)");
 });
 
-test("uses Astra from the fallback catalog when discovery fails", async () => {
+test("uses the configured GPT-6 and Grok models from the fallback catalog when discovery fails", async () => {
 	let providerConfig: ProviderConfig | undefined;
 	const recordingApi = {
 		registerProvider(_providerName: string, config: ProviderConfig) {
@@ -133,19 +133,27 @@ test("uses Astra from the fallback catalog when discovery fails", async () => {
 	}
 
 	assert.ok(providerConfig);
-	const astra = providerConfig.models?.find((model) => model.id === "gpt-6-astra");
-	assert.ok(astra);
-	assert.equal(astra.name, "GPT 6.0 Astra via CLIProxyAPI");
-	assert.equal(astra.contextWindow, 272_000);
-	assert.equal(astra.maxTokens, 128_000);
-	assert.deepEqual(astra.thinkingLevelMap, {
-		minimal: null,
-		low: "low",
-		medium: "medium",
-		high: "high",
-		xhigh: "xhigh",
-		max: "max",
-	});
+	const registeredModels = providerConfig.models ?? [];
+	for (const [id, name, contextWindow, maxTokens] of [
+		["gpt-6-astra", "GPT 6.0 Astra via CLIProxyAPI", 272_000, 128_000],
+		["gpt-6-luna", "GPT 6.0 Luna via CLIProxyAPI", 272_000, 128_000],
+		["gpt-6-sol", "GPT 6.0 Sol via CLIProxyAPI", 272_000, 128_000],
+		["grok-4.7", "Grok 4.7 via CLIProxyAPI", 500_000, 65_536],
+	] as const) {
+		const fallback = registeredModels.find((candidate) => candidate.id === id);
+		assert.ok(fallback);
+		assert.equal(fallback.name, name);
+		assert.equal(fallback.contextWindow, contextWindow);
+		assert.equal(fallback.maxTokens, maxTokens);
+		assert.deepEqual(fallback.thinkingLevelMap, {
+			minimal: null,
+			low: "low",
+			medium: "medium",
+			high: "high",
+			xhigh: "xhigh",
+			max: id.startsWith("grok-") ? null : "max",
+		});
+	}
 });
 
 test("rewrites Sol Fast requests to the priority service tier", () => {
