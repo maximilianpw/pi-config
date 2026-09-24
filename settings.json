@@ -8,16 +8,8 @@
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-macchiato",
-  "lastChangelogVersion": "0.85.1",
-  "enabledModels": [
-    "cliproxyapi/gpt-5.6-luna",
-    "cliproxyapi/gpt-5.6-sol",
-    "cliproxyapi/gpt-6-astra",
-    "cliproxyapi/gpt-6-luna",
-    "cliproxyapi/gpt-6-sol",
-    "cliproxyapi/grok-4.6",
-    "cliproxyapi/grok-4.7"
-  ],
+  "lastChangelogVersion": "0.87.1",
+  "enabledModels": ["cliproxyapi/*"],
   "packages": [
     {
       "source": "npm:@plannotator/pi-extension",

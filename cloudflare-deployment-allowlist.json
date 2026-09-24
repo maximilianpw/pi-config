@@ -1,6 +1,21 @@
 {
-  "version": 2,
-  "workers": {},
-  "alchemy": [
-  ]
-}
+   "version": 2,
+   "workers": {},
+   "alchemy": [
+     {
+       "project": "~/Local/cf-paste/alchemy.run.ts",
+       "stages": ["production"],
+       "stack": "CfPaste"
+     },
+     {
+       "project": "~/Local/repoship/packages/workspace-state-worker/product-rehearsal.alchemy.run.ts",
+       "stages": ["production"],
+       "stack": "RepoShipLandingAlchemyRehearsal"
+     },
+     {
+       "project": "~/Local/repoship/packages/workspace-state-worker/product-canary.alchemy.run.ts",
+       "stages": ["production"],
+       "stack": "RepoShipProductCanaryAdoption"
+     }
+   ]
+ }

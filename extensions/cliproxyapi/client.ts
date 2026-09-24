@@ -142,6 +142,69 @@ export interface CLIProxyAPIClient {
 	): Promise<CLIProxyAPIModelQuota | null>;
 }
 
+export function createConfiguredCLIProxyAPIQuotaClient(): CLIProxyAPIClient {
+	let client: CLIProxyAPIClient | undefined;
+	return {
+		async getModelQuota(modelId, options) {
+			if (client === undefined) {
+				const connection = resolveCLIProxyAPIConnection();
+				const hostname = new URL(connection.rootUrl).hostname;
+				client = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1"
+					? createCLIProxyAPIClient()
+					: createRemoteCLIProxyAPIQuotaClient(connection);
+			}
+			return client.getModelQuota(modelId, options);
+		},
+	};
+}
+
+export function createRemoteCLIProxyAPIQuotaClient(
+	connection: CLIProxyAPIConnection,
+	fetchImplementation: Fetch = globalThis.fetch,
+): CLIProxyAPIClient {
+	return {
+		async getModelQuota(modelId, options = {}) {
+			const provider = quotaProviderForModel(modelId);
+			if (provider === null) return null;
+			const response = await fetchImplementation(
+				`${connection.rootUrl}/quota/v1/${provider}`,
+				{
+					headers: { authorization: `Bearer ${connection.apiKey}` },
+					signal: requestSignal(options.signal, DEFAULT_REQUEST_TIMEOUT_MS),
+				},
+			);
+			if (!response.ok) {
+				throw new Error(`CLIProxyAPI remote ${provider} quota request failed with HTTP ${response.status}`);
+			}
+			return parseRemoteCLIProxyAPIQuota(await response.json(), provider);
+		},
+	};
+}
+
+function isCLIProxyAPIQuotaWindow(value: unknown): value is CLIProxyAPIQuotaWindow {
+	return isRecord(value) && typeof value.label === "string" &&
+		typeof value.usedPercent === "number" && value.usedPercent >= 0 && value.usedPercent <= 100 &&
+		(value.resetAtMs === null || (typeof value.resetAtMs === "number" && Number.isFinite(value.resetAtMs)));
+}
+
+function parseRemoteCLIProxyAPIQuota(
+	value: unknown,
+	provider: CLIProxyAPIQuotaProvider,
+): CLIProxyAPIModelQuota {
+	const windows = isRecord(value) && Array.isArray(value.windows) ? value.windows : [];
+	const readyAccounts = isRecord(value) ? value.readyAccounts : undefined;
+	const totalAccounts = isRecord(value) ? value.totalAccounts : undefined;
+	const fetchedAtMs = isRecord(value) ? value.fetchedAtMs : undefined;
+	if (!isRecord(value) || value.provider !== provider || windows.length === 0 ||
+		typeof readyAccounts !== "number" || !Number.isInteger(readyAccounts) || readyAccounts < 0 ||
+		typeof totalAccounts !== "number" || !Number.isInteger(totalAccounts) || totalAccounts < readyAccounts ||
+		typeof fetchedAtMs !== "number" || !Number.isFinite(fetchedAtMs) ||
+		!windows.every(isCLIProxyAPIQuotaWindow)) {
+		throw new Error(`CLIProxyAPI remote ${provider} quota response is invalid`);
+	}
+	return { provider, windows: windows.filter(isCLIProxyAPIQuotaWindow), readyAccounts, totalAccounts, fetchedAtMs };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

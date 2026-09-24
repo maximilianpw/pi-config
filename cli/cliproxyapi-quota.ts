@@ -1,5 +1,5 @@
 import {
-	createCLIProxyAPIClient,
+	createConfiguredCLIProxyAPIQuotaClient,
 	type CLIProxyAPIClient,
 	type CLIProxyAPIModelQuota,
 } from "../extensions/cliproxyapi/client.ts";
@@ -56,7 +56,7 @@ function quotaEntry(
 }
 
 export async function getCLIProxyAPIQuotaReport(
-	client: CLIProxyAPIClient = createCLIProxyAPIClient(),
+	client: CLIProxyAPIClient = createConfiguredCLIProxyAPIQuotaClient(),
 ): Promise<CLIProxyAPIQuotaReport> {
 	const families = await Promise.all(
 		ROUTE_TARGETS.map(async ({ family, modelId }): Promise<CLIProxyAPIQuotaReportEntry> => {

@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
 	CLIPROXYAPI_PROVIDER_ID,
-	createCLIProxyAPIClient,
+	createConfiguredCLIProxyAPIQuotaClient,
 	type CLIProxyAPIModelQuota,
 } from "./cliproxyapi/client.ts";
 
@@ -38,7 +38,7 @@ function clearStatus(ctx: ExtensionContext): void {
 }
 
 export default function cliProxyAPIUsage(pi: ExtensionAPI): void {
-	const client = createCLIProxyAPIClient();
+	const client = createConfiguredCLIProxyAPIQuotaClient();
 	let refreshGeneration = 0;
 
 	function refresh(

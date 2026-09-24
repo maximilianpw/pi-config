@@ -11,6 +11,7 @@
   },
   "files": [
     "cli/cliproxyapi-quota.ts",
+    "cli/cliproxyapi-quota-server.ts",
     "cli/cliproxyapi-util.ts",
     "extensions/model-free-footer.ts",
     "extensions/cliproxyapi-models.ts",

@@ -9,14 +9,17 @@ import {
 } from "../cli/cliproxyapi-quota.ts";
 import {
 	createCLIProxyAPIClient,
+	createRemoteCLIProxyAPIQuotaClient,
 	parseClaudeQuota,
 	parseCodexQuota,
 	parseXAIQuota,
 	quotaProviderForModel,
 	resolveCLIProxyAPIConnection,
 	type CLIProxyAPIClient,
+	type CLIProxyAPIModelQuota,
 } from "../extensions/cliproxyapi/client.ts";
 import { formatCLIProxyAPIQuotaText } from "../extensions/cliproxyapi-usage.ts";
+import { createCLIProxyAPIQuotaHandler } from "../cli/cliproxyapi-quota-server.ts";
 
 test("requires explicit CLIProxyAPI routing instead of falling back to localhost", () => {
 	assert.throws(
@@ -227,6 +230,40 @@ test("uses the least-used ready credential from a CLIProxyAPI account pool", asy
 		assert.equal(requests, 2, "same-provider quota should use the short-lived cache");
 	} finally {
 		await rm(authDirectory, { recursive: true, force: true });
+	}
+});
+
+test("remote quota uses the proxy credential, not stale local OAuth files", async () => {
+	const quota = {
+		provider: "codex",
+		windows: [{ label: "7d", usedPercent: 42, resetAtMs: null }],
+		readyAccounts: 1,
+		totalAccounts: 2,
+		fetchedAtMs: 123,
+	} satisfies CLIProxyAPIModelQuota;
+	const handler = createCLIProxyAPIQuotaHandler({
+		async getModelQuota(modelId) {
+			assert.equal(modelId, "gpt-5.6-sol");
+			return quota;
+		},
+	});
+	const client = createRemoteCLIProxyAPIQuotaClient(
+		{ rootUrl: "https://proxy.example.test", baseUrl: "https://proxy.example.test/v1", apiKey: "proxy-key" },
+		async (input, init) => {
+			assert.equal(input, "https://proxy.example.test/quota/v1/codex");
+			assert.equal(new Headers(init?.headers).get("authorization"), "Bearer proxy-key");
+			return handler(new Request(String(input)));
+		},
+	);
+	assert.deepEqual(await client.getModelQuota("gpt-5.6-sol"), quota);
+	assert.equal((await handler(new Request("http://localhost/quota/v1/codex", { method: "POST" }))).status, 404);
+});
+
+test("remote quota rejects errors and malformed replies instead of falling back to local credentials", async () => {
+	const connection = { rootUrl: "https://proxy.example.test", baseUrl: "https://proxy.example.test/v1", apiKey: "proxy-key" };
+	for (const response of [new Response(null, { status: 503 }), Response.json({ provider: "codex", windows: [] })]) {
+		const client = createRemoteCLIProxyAPIQuotaClient(connection, async () => response);
+		await assert.rejects(client.getModelQuota("gpt-5.6-sol"));
 	}
 });
 
