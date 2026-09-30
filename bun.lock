@@ -28,20 +28,6 @@
       "name": "pi-cfpaste-extension",
       "version": "0.1.0",
     },
-    "extensions/executor": {
-      "name": "pi-executor-extension",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/node": "^26.1.1",
-        "tsx": "^4.20.5",
-        "typescript": "^7.0.2",
-      },
-      "peerDependencies": {
-        "@earendil-works/pi-ai": "*",
-        "@earendil-works/pi-coding-agent": "*",
-        "typebox": "*",
-      },
-    },
     "extensions/pi-skill-toggle": {
       "name": "pi-skill-toggle",
       "version": "0.1.0",
@@ -658,8 +644,6 @@
     "pi-ask-user-extension": ["pi-ask-user-extension@workspace:extensions/ask-user"],
 
     "pi-cfpaste-extension": ["pi-cfpaste-extension@workspace:extensions/cfpaste"],
-
-    "pi-executor-extension": ["pi-executor-extension@workspace:extensions/executor"],
 
     "pi-save-md-extension": ["pi-save-md-extension@workspace:extensions/save-md"],
 

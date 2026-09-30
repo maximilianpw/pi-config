@@ -8,14 +8,15 @@
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-macchiato",
-  "lastChangelogVersion": "0.87.1",
-  "enabledModels": ["cliproxyapi/*"],
+  "lastChangelogVersion": "0.99.1",
+  "enabledModels": [
+    "cliproxyapi/*"
+  ],
   "packages": [
     {
       "source": "npm:@plannotator/pi-extension",
       "skills": []
     },
-    "npm:@ff-labs/pi-fff",
-    "npm:pi-mcp-adapter@2.33.0"
+    "npm:@ff-labs/pi-fff"
   ]
 }
