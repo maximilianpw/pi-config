@@ -15,6 +15,13 @@ export interface CLIProxyAPIEnvironment {
 	CLIPROXYAPI_ROOT_URL?: string;
 	CLIPROXYAPI_API_KEY?: string;
 	CLIPROXYAPI_API_KEY_FILE?: string;
+	CLIPROXYAPI_QUOTA_URL?: string;
+}
+
+/** Fleet's quota endpoint base (ending in /quota/v1) and the token sent to it. */
+export interface CLIProxyAPIQuotaConnection {
+	quotaUrl: string;
+	apiKey: string;
 }
 
 type ReadTextFile = (path: string) => string;
@@ -49,6 +56,8 @@ function readClientEnvironment(
 				typeof payload.rootUrl === "string" ? payload.rootUrl : undefined,
 			CLIPROXYAPI_API_KEY_FILE:
 				typeof payload.apiKeyFile === "string" ? payload.apiKeyFile : undefined,
+			CLIPROXYAPI_QUOTA_URL:
+				typeof payload.quotaUrl === "string" ? payload.quotaUrl : undefined,
 		};
 	} catch (error) {
 		if (isRecord(error) && error.code === "ENOENT") return {};
@@ -56,10 +65,10 @@ function readClientEnvironment(
 	}
 }
 
-export function resolveCLIProxyAPIConnection(
-	environment: CLIProxyAPIEnvironment = process.env,
-	options: ResolveCLIProxyAPIConnectionOptions = {},
-): CLIProxyAPIConnection {
+function resolveClientSettings(
+	environment: CLIProxyAPIEnvironment,
+	options: ResolveCLIProxyAPIConnectionOptions,
+): { connection: CLIProxyAPIConnection; quotaUrl: string | undefined } {
 	const readTextFile = options.readTextFile ?? ((path) => readFileSync(path, "utf8"));
 	const fileEnvironment = readClientEnvironment(
 		options.configFilePath === undefined
@@ -84,7 +93,45 @@ export function resolveCLIProxyAPIConnection(
 	if (!apiKey) {
 		throw new Error("CLIProxyAPI API key is empty");
 	}
-	return { rootUrl, baseUrl: `${rootUrl}/v1`, apiKey };
+	const quotaUrl = (
+		environment.CLIPROXYAPI_QUOTA_URL ?? fileEnvironment.CLIPROXYAPI_QUOTA_URL
+	)?.trim();
+	return {
+		connection: { rootUrl, baseUrl: `${rootUrl}/v1`, apiKey },
+		quotaUrl: quotaUrl ? quotaUrl.replace(/\/$/, "") : undefined,
+	};
+}
+
+export function resolveCLIProxyAPIConnection(
+	environment: CLIProxyAPIEnvironment = process.env,
+	options: ResolveCLIProxyAPIConnectionOptions = {},
+): CLIProxyAPIConnection {
+	return resolveClientSettings(environment, options).connection;
+}
+
+function isLoopbackUrl(url: string): boolean {
+	const hostname = new URL(url).hostname;
+	return hostname === "localhost" || hostname === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(hostname);
+}
+
+/**
+ * Quota is always read over HTTP from Fleet's cliproxy-quota service. The URL
+ * is explicit (`quotaUrl` / CLIPROXYAPI_QUOTA_URL): loopback on Kim, the public
+ * endpoint elsewhere. A public root URL implies `${rootUrl}/quota/v1`; a
+ * loopback root URL is the proxy itself, so it never implies a quota URL.
+ */
+export function resolveCLIProxyAPIQuotaConnection(
+	environment: CLIProxyAPIEnvironment = process.env,
+	options: ResolveCLIProxyAPIConnectionOptions = {},
+): CLIProxyAPIQuotaConnection {
+	const { connection, quotaUrl } = resolveClientSettings(environment, options);
+	if (quotaUrl !== undefined) return { quotaUrl, apiKey: connection.apiKey };
+	if (isLoopbackUrl(connection.rootUrl)) {
+		throw new Error(
+			"CLIProxyAPI quota requires CLIPROXYAPI_QUOTA_URL when CLIPROXYAPI_ROOT_URL is loopback",
+		);
+	}
+	return { quotaUrl: `${connection.rootUrl}/quota/v1`, apiKey: connection.apiKey };
 }
 
 const CLAUDE_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
@@ -146,20 +193,14 @@ export function createConfiguredCLIProxyAPIQuotaClient(): CLIProxyAPIClient {
 	let client: CLIProxyAPIClient | undefined;
 	return {
 		async getModelQuota(modelId, options) {
-			if (client === undefined) {
-				const connection = resolveCLIProxyAPIConnection();
-				const hostname = new URL(connection.rootUrl).hostname;
-				client = hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1"
-					? createCLIProxyAPIClient()
-					: createRemoteCLIProxyAPIQuotaClient(connection);
-			}
+			client ??= createRemoteCLIProxyAPIQuotaClient(resolveCLIProxyAPIQuotaConnection());
 			return client.getModelQuota(modelId, options);
 		},
 	};
 }
 
 export function createRemoteCLIProxyAPIQuotaClient(
-	connection: CLIProxyAPIConnection,
+	connection: CLIProxyAPIQuotaConnection,
 	fetchImplementation: Fetch = globalThis.fetch,
 ): CLIProxyAPIClient {
 	return {
@@ -167,12 +208,14 @@ export function createRemoteCLIProxyAPIQuotaClient(
 			const provider = quotaProviderForModel(modelId);
 			if (provider === null) return null;
 			const response = await fetchImplementation(
-				`${connection.rootUrl}/quota/v1/${provider}`,
+				`${connection.quotaUrl}/${provider}`,
 				{
 					headers: { authorization: `Bearer ${connection.apiKey}` },
 					signal: requestSignal(options.signal, DEFAULT_REQUEST_TIMEOUT_MS),
 				},
 			);
+			// The quota service has no credential for this provider.
+			if (response.status === 404) return null;
 			if (!response.ok) {
 				throw new Error(`CLIProxyAPI remote ${provider} quota request failed with HTTP ${response.status}`);
 			}

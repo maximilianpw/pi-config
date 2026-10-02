@@ -15,6 +15,7 @@ import {
 	parseXAIQuota,
 	quotaProviderForModel,
 	resolveCLIProxyAPIConnection,
+	resolveCLIProxyAPIQuotaConnection,
 	type CLIProxyAPIClient,
 	type CLIProxyAPIModelQuota,
 } from "../extensions/cliproxyapi/client.ts";
@@ -248,7 +249,7 @@ test("remote quota uses the proxy credential, not stale local OAuth files", asyn
 		},
 	});
 	const client = createRemoteCLIProxyAPIQuotaClient(
-		{ rootUrl: "https://proxy.example.test", baseUrl: "https://proxy.example.test/v1", apiKey: "proxy-key" },
+		{ quotaUrl: "https://proxy.example.test/quota/v1", apiKey: "proxy-key" },
 		async (input, init) => {
 			assert.equal(input, "https://proxy.example.test/quota/v1/codex");
 			assert.equal(new Headers(init?.headers).get("authorization"), "Bearer proxy-key");
@@ -260,11 +261,58 @@ test("remote quota uses the proxy credential, not stale local OAuth files", asyn
 });
 
 test("remote quota rejects errors and malformed replies instead of falling back to local credentials", async () => {
-	const connection = { rootUrl: "https://proxy.example.test", baseUrl: "https://proxy.example.test/v1", apiKey: "proxy-key" };
+	const connection = { quotaUrl: "https://proxy.example.test/quota/v1", apiKey: "proxy-key" };
 	for (const response of [new Response(null, { status: 503 }), Response.json({ provider: "codex", windows: [] })]) {
 		const client = createRemoteCLIProxyAPIQuotaClient(connection, async () => response);
 		await assert.rejects(client.getModelQuota("gpt-5.6-sol"));
 	}
+});
+
+test("a quota-service 404 means no credential for that provider", async () => {
+	const client = createRemoteCLIProxyAPIQuotaClient(
+		{ quotaUrl: "http://127.0.0.1:8318/quota/v1", apiKey: "local-key" },
+		async (input) => {
+			assert.equal(input, "http://127.0.0.1:8318/quota/v1/xai");
+			return new Response(null, { status: 404 });
+		},
+	);
+	assert.equal(await client.getModelQuota("grok-4.6"), null);
+});
+
+test("resolves an explicit quota URL, a public root fallback, and refuses a loopback root", () => {
+	const files = (entries: Record<string, string>) => (path: string) => {
+		const body = entries[path];
+		if (body === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+		return body;
+	};
+	assert.deepEqual(
+		resolveCLIProxyAPIQuotaConnection({}, {
+			configFilePath: "/c.json",
+			readTextFile: files({
+				"/c.json": JSON.stringify({
+					rootUrl: "http://127.0.0.1:8317",
+					quotaUrl: "http://127.0.0.1:8318/quota/v1/",
+					apiKeyFile: "/run/secrets/local",
+				}),
+				"/run/secrets/local": "local-key\n",
+			}),
+		}),
+		{ quotaUrl: "http://127.0.0.1:8318/quota/v1", apiKey: "local-key" },
+	);
+	assert.deepEqual(
+		resolveCLIProxyAPIQuotaConnection(
+			{ CLIPROXYAPI_ROOT_URL: "https://proxy.example.test/", CLIPROXYAPI_API_KEY: "public-key" },
+			{ configFilePath: null },
+		),
+		{ quotaUrl: "https://proxy.example.test/quota/v1", apiKey: "public-key" },
+	);
+	assert.throws(
+		() => resolveCLIProxyAPIQuotaConnection(
+			{ CLIPROXYAPI_ROOT_URL: "http://127.0.0.1:8317", CLIPROXYAPI_API_KEY: "local-key" },
+			{ configFilePath: null },
+		),
+		/requires CLIPROXYAPI_QUOTA_URL/,
+	);
 });
 
 test("builds a deterministic routing quota report", async () => {
