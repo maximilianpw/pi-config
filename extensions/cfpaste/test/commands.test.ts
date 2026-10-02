@@ -36,6 +36,7 @@ function bindRunnerActions(runner: ExtensionRunner, feedback: string[]): void {
 		setLabel: () => undefined,
 		getActiveTools: () => [],
 		getAllTools: () => [],
+		getSettings: () => ({}),
 		setActiveTools: () => undefined,
 		refreshTools: () => undefined,
 		getCommands: () => [],

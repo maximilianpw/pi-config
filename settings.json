@@ -1,14 +1,16 @@
 {
   "defaultProvider": "cliproxyapi",
-  "defaultModel": "gpt-6-sol",
+  "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "medium",
+  "defaultTools": ["+codemode", "+tool_search"],
+  "quietStartup": "header",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "steeringMode": "all",
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-macchiato",
-  "lastChangelogVersion": "0.99.1",
+  "lastChangelogVersion": "1.0.0",
   "enabledModels": [
     "cliproxyapi/*"
   ],

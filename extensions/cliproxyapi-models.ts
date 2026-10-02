@@ -9,12 +9,19 @@ import type {
 } from "@earendil-works/pi-ai";
 import { streamSimple as streamSimpleByApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
+
 import {
 	CLIPROXYAPI_PROVIDER_ID as PROVIDER_ID,
 	resolveCLIProxyAPIConnection,
 	type CLIProxyAPIEnvironment,
 } from "./cliproxyapi/client.ts";
+
+// Pi v1 providers can also register image and classifier models; this catalog is chat-only.
+type ProviderChatModelConfig = Extract<ProviderModelConfig, { type?: "chat" }>;
+
 const API = "openai-responses";
+// Only this model has a verified CLIProxyAPI priority-tier alias. Do not infer
+// Fast support from newer Sol model names.
 const SOL_MODEL_ID = "gpt-5.6-sol";
 const SOL_FAST_MODEL_ID = `${SOL_MODEL_ID}-fast`;
 const PRIORITY_SERVICE_TIER = "priority";
@@ -145,7 +152,7 @@ function thinkingLevelMap(levels: readonly Exclude<ModelThinkingLevel, "off">[])
 	return result;
 }
 
-export function toProviderModel(model: CLIProxyAPICatalogModel): ProviderModelConfig {
+export function toProviderModel(model: CLIProxyAPICatalogModel): ProviderChatModelConfig {
 	const reasoning = model.reasoningLevels.length > 0;
 	return {
 		id: model.id,
@@ -160,8 +167,8 @@ export function toProviderModel(model: CLIProxyAPICatalogModel): ProviderModelCo
 }
 
 export function addSolFastVariant(
-	models: readonly ProviderModelConfig[],
-): ProviderModelConfig[] {
+	models: readonly ProviderChatModelConfig[],
+): ProviderChatModelConfig[] {
 	const modelIds = new Set(models.map((model) => model.id));
 	return models.flatMap((model) => {
 		if (model.id !== SOL_MODEL_ID || modelIds.has(SOL_FAST_MODEL_ID)) return [model];
@@ -208,7 +215,7 @@ function fallbackModel(
 	contextWindow: number,
 	maxTokens: number,
 	reasoningLevels: Exclude<ModelThinkingLevel, "off">[],
-): ProviderModelConfig {
+): ProviderChatModelConfig {
 	return toProviderModel({
 		id,
 		name,
@@ -226,6 +233,8 @@ const FALLBACK_MODELS = addSolFastVariant([
 	fallbackModel("gpt-6-astra", "GPT 6.0 Astra", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-6-luna", "GPT 6.0 Luna", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-6-sol", "GPT 6.0 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
+	// Matches Pi v1's bundled GPT-6.1 Sol metadata; live discovery takes precedence.
+	fallbackModel("gpt-6.1-sol", "GPT 6.1 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("grok-4.6", "Grok 4.6", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
 	fallbackModel("grok-4.7", "Grok 4.7", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
 ]);
@@ -242,7 +251,7 @@ async function fetchModels(
 	baseUrl: string,
 	apiKey: string,
 	signal: AbortSignal,
-): Promise<ProviderModelConfig[]> {
+): Promise<ProviderChatModelConfig[]> {
 	const modelsUrl = `${baseUrl}/models`;
 	const headers = {
 		accept: "application/json",

@@ -4,10 +4,12 @@
       "command": "cua-driver",
       "args": ["mcp"],
       "timeout": 60,
-      "exposure": "direct"
+      "exposure": "deferred",
+      "description": "Inspect and operate native applications and browsers through Cua Driver, with screenshots, accessibility snapshots, exact-target input, and state verification."
     },
     "executor": {
-      "url": "https://executor.maximilian.pw/mcp"
+      "url": "https://executor.maximilian.pw/mcp",
+      "description": "Remote executor MCP server; discover its current tool capabilities and instructions before use."
     }
   }
 }

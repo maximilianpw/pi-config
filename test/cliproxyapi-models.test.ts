@@ -107,7 +107,7 @@ test("adds a Fast Mode variant for Sol only", () => {
 	assert.equal(models[1]?.name, "GPT 5.6 Sol via CLIProxyAPI (Fast)");
 });
 
-test("uses the configured GPT-6 and Grok models from the fallback catalog when discovery fails", async () => {
+test("uses the configured GPT-6.1, GPT-6, and Grok models from the fallback catalog when discovery fails", async () => {
 	let providerConfig: ProviderConfig | undefined;
 	const recordingApi = {
 		registerProvider(_providerName: string, config: ProviderConfig) {
@@ -138,10 +138,12 @@ test("uses the configured GPT-6 and Grok models from the fallback catalog when d
 		["gpt-6-astra", "GPT 6.0 Astra via CLIProxyAPI", 272_000, 128_000],
 		["gpt-6-luna", "GPT 6.0 Luna via CLIProxyAPI", 272_000, 128_000],
 		["gpt-6-sol", "GPT 6.0 Sol via CLIProxyAPI", 272_000, 128_000],
+		["gpt-6.1-sol", "GPT 6.1 Sol via CLIProxyAPI", 272_000, 128_000],
 		["grok-4.7", "Grok 4.7 via CLIProxyAPI", 500_000, 65_536],
 	] as const) {
 		const fallback = registeredModels.find((candidate) => candidate.id === id);
 		assert.ok(fallback);
+		assert.ok(fallback.type === undefined || fallback.type === "chat");
 		assert.equal(fallback.name, name);
 		assert.equal(fallback.contextWindow, contextWindow);
 		assert.equal(fallback.maxTokens, maxTokens);
@@ -154,6 +156,17 @@ test("uses the configured GPT-6 and Grok models from the fallback catalog when d
 			max: id.startsWith("grok-") ? null : "max",
 		});
 	}
+});
+
+test("does not infer Fast Mode support for newer Sol models", () => {
+	const models = ["gpt-6-sol", "gpt-6.1-sol"].map((slug) => {
+		const [catalogModel] = parseCLIProxyAPICatalog({ models: [{ slug }] });
+		assert.ok(catalogModel);
+		return toProviderModel(catalogModel);
+	});
+	assert.deepEqual(addSolFastVariant(models), models);
+	const payload = { model: "gpt-6.1-sol", input: "hello" };
+	assert.equal(rewriteCLIProxyAPIFastRequest(payload, "gpt-6.1-sol"), payload);
 });
 
 test("rewrites Sol Fast requests to the priority service tier", () => {

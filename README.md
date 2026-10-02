@@ -26,12 +26,24 @@ Do not commit `auth.json`, sessions, `.env`, or package caches.
 
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
 
-Computer use uses Pi's built-in MCP support and the `computer` server in `mcp.json`. It runs `cua-driver mcp` with a 60-second request timeout and exposes its tools directly to the model. Pi's normal tool permission pipeline applies to MCP calls.
+Computer use uses Pi's built-in MCP support and the `computer` server in `mcp.json`. It runs `cua-driver mcp` with a 60-second request timeout and uses deferred exposure: `tool_search` discovers tools and declares them when needed, rather than putting the entire computer API into every coding prompt. Pi's normal tool permission pipeline applies to MCP calls, including nested codemode calls.
+
+The `executor` MCP server keeps the default codemode exposure. Server descriptions make both servers discoverable before they connect.
+
+## Pi v1 defaults and development
+
+- The four Pi SDK dependencies are pinned together to `1.0.0`, matching the installed host used to validate these extensions. Update them and `bun.lock` together when upgrading Pi.
+- `defaultTools` adds `codemode` and `tool_search` without replacing the normal file and shell tools. Codemode remains available even when no MCP server connects; its default `on` mode keeps direct tools available too.
+- `quietStartup: "header"` keeps version/key hints and hides the repetitive resource listing. Fullscreen comes from Pi v1's default; the custom Catppuccin theme remains selected.
+- Pi subagents explicitly load the built-in codemode and tool-search extensions, with normal settings and project-trust handling. They deliberately do not load MCP, so they do not inherit the computer or executor servers. Recursive subagent tools and `ask_user` remain excluded, including through codemode.
+- CLIProxyAPI live discovery remains authoritative. Its offline fallback includes GPT-6.1 Sol. Only the existing GPT-5.6 Sol Fast alias rewrites requests to the priority tier; newer Sol models are not assumed to support it.
+
+Subagent resource tests use temporary agent directories and a fake model provider. Normal checks do not call provider APIs or require live credentials.
 
 ## Apply
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run check
 make -C ~/nix-config rebuild
 ```
