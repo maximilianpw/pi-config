@@ -9,8 +9,8 @@ Agent policy lives in `~/nix-config`: shared rules in `users/maxpw/agents/shared
 - `settings.json` — Pi defaults, enabled models, and installed Pi packages
 - `mcp.json` — Pi's built-in MCP configuration for the local Cua Driver computer-use server
 - `cloudflare-deployment-allowlist.json` — human-owned deployment policy; empty maps deny all deployments
-- `cli/` — command-line entry points installed by Home Manager, including `cliproxyapi-util quota`
 - `extensions/` — global Pi extensions; each package or `.ts` file is the source of truth for the commands and tools it registers
+  - The CLIProxyAPI quota footer reads Fleet's `cliproxy-quota` HTTP service at `quotaUrl` from `~/.config/cliproxyapi/client.json`. The service and `cliproxyapi-util quota` live in the Fleet repository (`services/cliproxy-quota/`), not here.
 - `prompts/` — prompt templates
 - `themes/` — TUI themes
 

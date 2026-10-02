@@ -3,7 +3,7 @@
 ## Purpose and ownership
 
 This repository is the editable source for personal Pi coding-agent settings,
-models, CLI utilities, themes, prompts, and extensions. Home Manager in the
+models, themes, prompts, and extensions. Home Manager in the
 separate `nix-config` checkout links these sources into `~/.pi/agent`.
 
 - Edit this checkout, never installed links under `~/.pi/agent` or files in
@@ -23,7 +23,7 @@ clean checkout. Local edits, tests, and typechecks are safe without asking.
 
 - Configuration or documentation only: inspect the diff and run
   `git diff --check`.
-- Root extension or CLI change: `bun run typecheck` and, when behavior changes,
+- Root extension change: `bun run typecheck` and, when behavior changes,
   `bun run test`.
 - Workspace extension change: run its discoverable package check, for example
   `bun run --filter pi-web-tools-extension check`.
