@@ -22,6 +22,7 @@
       "source": "npm:@plannotator/pi-extension@0.28.23",
       "skills": []
     },
-    "npm:@ff-labs/pi-fff"
+    "npm:@ff-labs/pi-fff",
+    "https://github.com/earendil-works/pi-claude-code"
   ]
 }
