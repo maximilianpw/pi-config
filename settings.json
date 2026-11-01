@@ -1,6 +1,6 @@
 {
   "defaultProvider": "cliproxyapi",
-  "defaultModel": "gpt-6-astra",
+  "defaultModel": "claude-opus-5-5",
   "defaultThinkingLevel": "high",
   "defaultTools": [
     "+codemode",
