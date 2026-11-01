@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "cliproxyapi",
+  "defaultProvider": "claude-code",
   "defaultModel": "claude-opus-5-5",
   "defaultThinkingLevel": "high",
   "defaultTools": [
@@ -15,6 +15,7 @@
   "theme": "catppuccin-macchiato",
   "lastChangelogVersion": "1.4.0",
   "enabledModels": [
+    "claude-code/*",
     "cliproxyapi/*"
   ],
   "packages": [
