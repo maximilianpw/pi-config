@@ -2,7 +2,9 @@
   "mcpServers": {
     "computer": {
       "command": "cua-driver",
-      "args": ["mcp"],
+      "args": [
+        "mcp"
+      ],
       "timeout": 60,
       "exposure": "deferred",
       "description": "Inspect and operate native applications and browsers through Cua Driver, with screenshots, accessibility snapshots, exact-target input, and state verification."
