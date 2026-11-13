@@ -138,7 +138,7 @@ test("uses the configured GPT-6.1, GPT-6, and Grok models from the fallback cata
 		["gpt-6-astra", "GPT 6.0 Astra via CLIProxyAPI", 272_000, 128_000],
 		["gpt-6-luna", "GPT 6.0 Luna via CLIProxyAPI", 272_000, 128_000],
 		["gpt-6-sol", "GPT 6.0 Sol via CLIProxyAPI", 272_000, 128_000],
-		["gpt-6.1-sol", "GPT 6.1 Sol via CLIProxyAPI", 272_000, 128_000],
+		["gpt-6.1-sol", "GPT 6.1 Sol via CLIProxyAPI", 500_000, 128_000],
 		["grok-4.7", "Grok 4.7 via CLIProxyAPI", 500_000, 65_536],
 	] as const) {
 		const fallback = registeredModels.find((candidate) => candidate.id === id);

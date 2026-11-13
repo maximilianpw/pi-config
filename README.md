@@ -32,11 +32,12 @@ The `executor` MCP server keeps the default codemode exposure. Server descriptio
 
 ## Pi v1 defaults and development
 
-- The four Pi SDK dependencies are pinned together to `1.0.0`, matching the installed host used to validate these extensions. Update them and `bun.lock` together when upgrading Pi.
+- The default model is `cliproxyapi/gpt-6.1-sol` at `high` thinking. `enabledModels` limits startup selection and Ctrl+P cycling to GPT-6.1 Sol and GPT-6 Astra through CLIProxyAPI, and Claude Opus 5.5 and Fable 5.2 through `pi-claude-code`; `/model` still lists every available model.
+- The four Pi SDK dependencies are pinned together to `1.5.2`, matching the installed host used to validate these extensions. Update them and `bun.lock` together when upgrading Pi.
 - `defaultTools` adds `codemode` and `tool_search` without replacing the normal file and shell tools. Codemode remains available even when no MCP server connects; its default `on` mode keeps direct tools available too.
 - `quietStartup: "header"` keeps version/key hints and hides the repetitive resource listing. Fullscreen comes from Pi v1's default; the custom Catppuccin theme remains selected.
 - Pi subagents explicitly load the built-in codemode and tool-search extensions, with normal settings and project-trust handling. They deliberately do not load MCP, so they do not inherit the computer or executor servers. Recursive subagent tools and `ask_user` remain excluded, including through codemode.
-- CLIProxyAPI live discovery remains authoritative. Its offline fallback includes GPT-6.1 Sol. Only the existing GPT-5.6 Sol Fast alias rewrites requests to the priority tier; newer Sol models are not assumed to support it.
+- CLIProxyAPI live discovery remains authoritative. Its offline fallback includes GPT-6.1 Sol and GPT-6 Astra, so the default model and the scoped `enabledModels` list resolve when discovery fails. Only the existing GPT-5.6 Sol Fast alias rewrites requests to the priority tier; newer Sol models are not assumed to support it.
 
 Subagent resource tests use temporary agent directories and a fake model provider. Normal checks do not call provider APIs or require live credentials.
 

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://pi.dev/schemas/models.schema.json",
   "providers": {
     "opencode": {
       "baseUrl": "https://opencode.ai/zen/v1",

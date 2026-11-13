@@ -233,8 +233,7 @@ const FALLBACK_MODELS = addSolFastVariant([
 	fallbackModel("gpt-6-astra", "GPT 6.0 Astra", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-6-luna", "GPT 6.0 Luna", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("gpt-6-sol", "GPT 6.0 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
-	// Matches Pi v1's bundled GPT-6.1 Sol metadata; live discovery takes precedence.
-	fallbackModel("gpt-6.1-sol", "GPT 6.1 Sol", 272_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
+	fallbackModel("gpt-6.1-sol", "GPT 6.1 Sol", 500_000, 128_000, ["low", "medium", "high", "xhigh", "max"]),
 	fallbackModel("grok-4.6", "Grok 4.6", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
 	fallbackModel("grok-4.7", "Grok 4.7", 500_000, 65_536, ["low", "medium", "high", "xhigh"]),
 ]);

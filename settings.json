@@ -1,6 +1,7 @@
 {
-  "defaultProvider": "claude-code",
-  "defaultModel": "claude-opus-5-5",
+  "$schema": "https://pi.dev/schemas/settings.schema.json",
+  "defaultProvider": "cliproxyapi",
+  "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "high",
   "defaultTools": [
     "+codemode",
@@ -13,10 +14,13 @@
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-macchiato",
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.2",
+  "collapseChangelog": true,
   "enabledModels": [
-    "claude-code/*",
-    "cliproxyapi/*"
+    "cliproxyapi/gpt-6.1-sol",
+    "cliproxyapi/gpt-6-astra",
+    "claude-code/claude-opus-5-5",
+    "claude-code/claude-fable-5-2"
   ],
   "packages": [
     {

@@ -29,7 +29,7 @@ class NodeWorktreeCommandRunner implements WorktreeCommandRunner {
       });
       child.on("error", reject);
       child.on("close", (code, signal) => {
-        resolveResult({ stdout, stderr, code: code ?? -1, killed: signal !== null });
+        resolveResult({ stdout, stderr, code: code ?? -1, killed: signal !== null, truncated: false });
       });
     });
   }

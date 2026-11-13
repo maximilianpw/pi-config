@@ -22,7 +22,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { StringEnum } from "@earendil-works/pi-ai";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -277,7 +276,8 @@ export default function (pi: ExtensionAPI) {
       name: Type.String({
         description: SUBAGENT_SPAWN_PARAMETER_DESCRIPTIONS.name,
       }),
-      harness: StringEnum(BACKEND_NAMES, {
+      harness: Type.Enum(BACKEND_NAMES, {
+        type: "string",
         description: SUBAGENT_SPAWN_PARAMETER_DESCRIPTIONS.harness,
       }),
       working_dir: Type.Optional(
@@ -291,7 +291,8 @@ export default function (pi: ExtensionAPI) {
         }),
       ),
       reasoning_effort: Type.Optional(
-        StringEnum(REASONING_EFFORTS, {
+        Type.Enum(REASONING_EFFORTS, {
+          type: "string",
           description: SUBAGENT_SPAWN_PARAMETER_DESCRIPTIONS.reasoningEffort,
         }),
       ),

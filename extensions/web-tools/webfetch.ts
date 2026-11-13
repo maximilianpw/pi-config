@@ -1,5 +1,4 @@
 import { formatSize } from "@earendil-works/pi-coding-agent";
-import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { FetchPage, type FetchPageError } from "./fetch-page.ts";
@@ -52,7 +51,8 @@ export function createWebFetchTool(composition?: WebFetchToolComposition) {
 		parameters: Type.Object({
 			url: Type.String({ description: "The http:// or https:// URL to fetch." }),
 			format: Type.Optional(
-				StringEnum([...WEB_FETCH_FORMATS], {
+				Type.Enum(WEB_FETCH_FORMATS, {
+					type: "string",
 					description: "Return format. Defaults to the web-tools fetch default format setting.",
 				}),
 			),
