@@ -75,7 +75,7 @@ export function createProgramStatus(options: ProgramStatusOptions = {}) {
     }
 
     // ask_user emits this alongside its ui_prompt events; it is the only source of the question text.
-    pi.events.on("herdr:blocked", (data) => {
+    pi.events.on("ask-user:blocked", (data) => {
       const event = data as { active?: boolean; label?: string } | undefined;
       if (event?.active) {
         questionCount += 1;

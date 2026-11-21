@@ -82,10 +82,10 @@ test("reports an ask_user question as blocked with its text, then resumes workin
   status.setIdle(false);
   status.emit("agent_start");
 
-  status.emitBus("herdr:blocked", { active: true, label: "Question: Ship it?\nyes/no" });
+  status.emitBus("ask-user:blocked", { active: true, label: "Question: Ship it?\nyes/no" });
   status.emit("ui_prompt_start", { reason: "ui_prompt", kind: "custom" });
   status.emit("ui_prompt_end", { reason: "ui_prompt", kind: "custom" });
-  status.emitBus("herdr:blocked", { active: false });
+  status.emitBus("ask-user:blocked", { active: false });
 
   assert.deepEqual(status.reports().slice(1), [
     { state: "working", app: "pi" },
@@ -136,7 +136,7 @@ test("writes nothing outside the TUI", () => {
   const status = setup("rpc");
   status.emit("session_start", { reason: "startup" });
   runAgent(status);
-  status.emitBus("herdr:blocked", { active: true, label: "Question" });
+  status.emitBus("ask-user:blocked", { active: true, label: "Question" });
 
   assert.deepEqual(status.reports(), []);
 });

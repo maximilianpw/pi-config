@@ -328,7 +328,7 @@ export default function askUser(pi: ExtensionAPI) {
           };
         });
 
-      pi.events.emit("herdr:blocked", {
+      pi.events.emit("ask-user:blocked", {
         active: true,
         label: `Question: ${params.question}`,
       });
@@ -339,7 +339,7 @@ export default function askUser(pi: ExtensionAPI) {
           signal ?? new AbortController().signal,
         );
       } finally {
-        pi.events.emit("herdr:blocked", { active: false });
+        pi.events.emit("ask-user:blocked", { active: false });
       }
 
       if (!result) {
