@@ -7,7 +7,6 @@ Agent policy lives in `~/nix-config`: shared rules in `users/maxpw/agents/shared
 ## Layout
 
 - `settings.json` — Pi defaults, enabled models, and installed Pi packages
-- `mcp.json` — Pi's built-in MCP configuration for the local Cua Driver computer-use server
 - `cloudflare-deployment-allowlist.json` — human-owned deployment policy; empty maps deny all deployments
 - `extensions/` — global Pi extensions; each package or `.ts` file is the source of truth for the commands and tools it registers
   - The CLIProxyAPI quota footer reads Fleet's `cliproxy-quota` HTTP service at `quotaUrl` from `~/.config/cliproxyapi/client.json`. The service and `cliproxyapi-util quota` live in the Fleet repository (`services/cliproxy-quota/`), not here.
@@ -26,7 +25,7 @@ Do not commit `auth.json`, sessions, `.env`, or package caches.
 
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
 
-Computer use uses Pi's built-in MCP support and the `computer` server in `mcp.json`. It runs `fleet computer joyce`, which is `cua-driver mcp` on Joyce itself and the same server over SSH from any other host, with a 60-second request timeout and uses deferred exposure: `tool_search` discovers tools and declares them when needed, rather than putting the entire computer API into every coding prompt. Pi's normal tool permission pipeline applies to MCP calls, including nested codemode calls.
+MCP servers are declared in `nix-config` (`modules/agent-tools/home.nix`), which writes `~/.pi/agent/mcp.json` and registers the same servers for Claude Code and Codex. Computer use goes through the `computer` server: `fleet computer joyce`, which is `cua-driver mcp` on Joyce itself and the same server over SSH from any other host. It has a 60-second request timeout and uses deferred exposure: `tool_search` discovers tools and declares them when needed, rather than putting the entire computer API into every coding prompt. Pi's normal tool permission pipeline applies to MCP calls, including nested codemode calls.
 
 The `executor` MCP server keeps the default codemode exposure. Server descriptions make both servers discoverable before they connect.
 
