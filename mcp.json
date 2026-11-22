@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "computer": {
-      "command": "cua-driver",
+      "command": "fleet",
       "args": [
-        "mcp"
+        "computer",
+        "joyce"
       ],
       "timeout": 60,
       "exposure": "deferred",

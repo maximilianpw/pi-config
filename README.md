@@ -26,7 +26,7 @@ Do not commit `auth.json`, sessions, `.env`, or package caches.
 
 Plannotator comes from `npm:@plannotator/pi-extension` in `settings.json`. Start a plan-mode session with `pi --plan`.
 
-Computer use uses Pi's built-in MCP support and the `computer` server in `mcp.json`. It runs `cua-driver mcp` with a 60-second request timeout and uses deferred exposure: `tool_search` discovers tools and declares them when needed, rather than putting the entire computer API into every coding prompt. Pi's normal tool permission pipeline applies to MCP calls, including nested codemode calls.
+Computer use uses Pi's built-in MCP support and the `computer` server in `mcp.json`. It runs `fleet computer joyce`, which is `cua-driver mcp` on Joyce itself and the same server over SSH from any other host, with a 60-second request timeout and uses deferred exposure: `tool_search` discovers tools and declares them when needed, rather than putting the entire computer API into every coding prompt. Pi's normal tool permission pipeline applies to MCP calls, including nested codemode calls.
 
 The `executor` MCP server keeps the default codemode exposure. Server descriptions make both servers discoverable before they connect.
 
