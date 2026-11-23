@@ -1,4 +1,3 @@
-import { htmlToMarkdown, htmlToText, isPoorMarkdownConversion } from "./html.ts";
 import { decodeTextBuffer, parseContentType } from "./network.ts";
 import type { PublicWebClient, PublicWebError } from "./public-web-client.ts";
 import { err, ok, type Result } from "./result.ts";
@@ -96,7 +95,7 @@ export class FetchPage {
 		}
 
 		const decoded = decodeTextBuffer(response.value.body, parsedContentType.charset);
-		const converted = convertText(decoded.text, response.value.finalUrl, parsedContentType.kind, input.format);
+		const converted = await convertText(decoded.text, response.value.finalUrl, parsedContentType.kind, input.format);
 		if (converted._tag === "err") {
 			return converted;
 		}
@@ -149,21 +148,21 @@ export function shouldRetryWithFallbackUserAgent(response: Pick<Response, "statu
 	return response.status === 403 && response.headers.get("cf-mitigated") === "challenge";
 }
 
-function convertText(
+async function convertText(
 	text: string,
 	baseUrl: PublicHttpUrl,
 	kind: "html" | "text" | "svg",
 	format: WebFetchFormat,
-): Result<string, FetchPageError> {
+): Promise<Result<string, FetchPageError>> {
+	if (kind !== "html" || format === "html") return ok(text);
 	try {
-		if (kind === "html" && format === "markdown") {
+		// The HTML converters (linkedom, turndown, html-to-text) cost ~80ms to load, so Pi startup skips them.
+		const { htmlToMarkdown, htmlToText, isPoorMarkdownConversion } = await import("./html.ts");
+		if (format === "markdown") {
 			const markdown = htmlToMarkdown(text, baseUrl);
 			return ok(isPoorMarkdownConversion(markdown) ? htmlToText(text, baseUrl) : markdown);
 		}
-		if (kind === "html" && format === "text") {
-			return ok(htmlToText(text, baseUrl));
-		}
-		return ok(text);
+		return ok(htmlToText(text, baseUrl));
 	} catch (cause: unknown) {
 		return err({ _tag: "HtmlConversionFailed", cause });
 	}
