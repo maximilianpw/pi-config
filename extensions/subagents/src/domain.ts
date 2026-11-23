@@ -8,7 +8,7 @@
  */
 
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
-import { Data } from "effect";
+import * as Data from "effect/Data";
 
 export const BACKEND_NAMES = ["pi", "claude", "codex"] as const;
 export type BackendName = (typeof BACKEND_NAMES)[number];

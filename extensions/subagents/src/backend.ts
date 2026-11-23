@@ -9,7 +9,7 @@
  */
 
 import type { Effect, Scope, Stream } from "effect";
-import { Context } from "effect";
+import * as Context from "effect/Context";
 import type {
   BackendName,
   SendError,

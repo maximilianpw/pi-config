@@ -17,7 +17,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Cause, Scope } from "effect";
-import { Duration, Effect, Fiber, Queue, Ref, Stream } from "effect";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import type { SubagentBackend, SubagentSession } from "../backend.ts";
 import type {
   BackendName,

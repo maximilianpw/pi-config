@@ -13,7 +13,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Cause, Scope } from "effect";
-import { Effect, Queue, Stream } from "effect";
+import * as Effect from "effect/Effect";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import type { SubagentBackend, SubagentSession } from "../backend.ts";
 import type {
   ReasoningEffort,

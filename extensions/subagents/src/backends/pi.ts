@@ -27,7 +27,9 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type { Cause, Scope } from "effect";
-import { Effect, Queue, Stream } from "effect";
+import * as Effect from "effect/Effect";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import type { SubagentBackend, SubagentSession } from "../backend.ts";
 import type {
   SpawnTask,

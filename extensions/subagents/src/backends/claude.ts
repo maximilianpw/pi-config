@@ -13,15 +13,16 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-  query,
-  type SDKAssistantMessage,
-  type SDKMessage,
-  type SDKResultMessage,
-  type SDKUserMessage,
+import type {
+  SDKAssistantMessage,
+  SDKMessage,
+  SDKResultMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { Cause, Scope } from "effect";
-import { Effect, Queue, Stream } from "effect";
+import * as Effect from "effect/Effect";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import type { SubagentBackend, SubagentSession } from "../backend.ts";
 import type {
   QueuedMessage,
@@ -321,6 +322,11 @@ const makeClaudeSession = (
       ? THINKING_BUDGETS[task.reasoningEffort]
       : undefined;
     const claudeBinary = resolveClaudeBinary();
+    // Loaded on first spawn: the SDK adds ~50ms to every Pi startup otherwise.
+    const { query } = yield* Effect.tryPromise({
+      try: () => import("@anthropic-ai/claude-agent-sdk"),
+      catch: (error) => new SpawnError({ message: boundedError(error) }),
+    });
     const nativeQuery = yield* Effect.try({
       try: () =>
         query({

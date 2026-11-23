@@ -11,16 +11,14 @@
  * and issue fire-and-forget commands without touching the Effect runtime.
  */
 
-import {
-  Context,
-  Effect,
-  Exit,
-  Fiber,
-  Layer,
-  Result,
-  Scope,
-  Stream,
-} from "effect";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Result from "effect/Result";
+import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import type { SubagentBackend, SubagentSession } from "./backend.ts";
 import { BackendRegistry } from "./backend.ts";
 import type {
