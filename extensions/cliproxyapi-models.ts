@@ -1,8 +1,10 @@
 import type {
+	AnyModel,
 	Api,
 	AssistantMessageEventStream,
 	Context,
 	Model,
+	ModelsStoreEntry,
 	ModelThinkingLevel,
 	SimpleStreamOptions,
 	ThinkingLevelMap,
@@ -266,30 +268,50 @@ async function fetchModels(
 	);
 }
 
-export default async function cliProxyAPIModels(
+function storedModels(stored: Readonly<ModelsStoreEntry> | undefined): ProviderChatModelConfig[] | undefined {
+	const models = (stored?.models ?? []).filter(
+		(model: AnyModel): model is Model<Api> =>
+			model.provider === PROVIDER_ID && (model.type === undefined || model.type === "chat"),
+	);
+	return models.length > 0 ? models : undefined;
+}
+
+// Pi awaits the no-network refresh phases before the session starts, so startup only reads the
+// stored snapshot; the live catalog is fetched in Pi's background refresh and persisted for next launch.
+export default function cliProxyAPIModels(
 	pi: ExtensionAPI,
 	environment: CLIProxyAPIEnvironment = process.env,
-): Promise<void> {
+): void {
 	const connection = resolveCLIProxyAPIConnection(environment);
-	let models = FALLBACK_MODELS;
-	try {
-		models = await fetchModels(
-			connection.baseUrl,
-			connection.apiKey,
-			AbortSignal.timeout(5_000),
-		);
-	} catch (error) {
-		console.warn(
-			`CLIProxyAPI model discovery failed during startup; using the default catalog: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
 
 	pi.registerProvider(PROVIDER_ID, {
 		name: "CLIProxyAPI",
 		baseUrl: connection.baseUrl,
 		apiKey: connection.apiKey,
 		api: API,
-		models,
+		models: FALLBACK_MODELS,
 		streamSimple: createCLIProxyAPIFastStream(),
+		async refreshModels(context) {
+			const cached = storedModels(context.stored) ?? FALLBACK_MODELS;
+			if (!context.allowNetwork) return cached;
+
+			const models = await fetchModels(
+				connection.baseUrl,
+				connection.apiKey,
+				AbortSignal.any([context.signal, AbortSignal.timeout(10_000)]),
+			);
+			await context.publish({
+				persist: {
+					models: models.map((model) => ({
+						...model,
+						provider: PROVIDER_ID,
+						api: API,
+						baseUrl: connection.baseUrl,
+					})),
+					checkedAt: Date.now(),
+				},
+			});
+			return models;
+		},
 	});
 }

@@ -107,7 +107,12 @@ test("adds a Fast Mode variant for Sol only", () => {
 	assert.equal(models[1]?.name, "GPT 5.6 Sol via CLIProxyAPI (Fast)");
 });
 
-test("uses the configured GPT-6.1, GPT-6, and Grok models from the fallback catalog when discovery fails", async () => {
+const TEST_ENVIRONMENT = {
+	CLIPROXYAPI_ROOT_URL: "https://cliproxy.example.test",
+	CLIPROXYAPI_API_KEY: "test-key",
+};
+
+function registerForTest(): ProviderConfig {
 	let providerConfig: ProviderConfig | undefined;
 	const recordingApi = {
 		registerProvider(_providerName: string, config: ProviderConfig) {
@@ -115,24 +120,94 @@ test("uses the configured GPT-6.1, GPT-6, and Grok models from the fallback cata
 		},
 	};
 	// SAFETY: The extension uses only registerProvider; this recording API supplies that operation.
-	const pi = recordingApi as unknown as ExtensionAPI;
-	const originalFetch = globalThis.fetch;
-	const originalWarn = console.warn;
-	globalThis.fetch = async () => {
-		throw new Error("offline");
+	cliProxyAPIModels(recordingApi as unknown as ExtensionAPI, TEST_ENVIRONMENT);
+	assert.ok(providerConfig);
+	return providerConfig;
+}
+
+type RefreshContext = Parameters<NonNullable<ProviderConfig["refreshModels"]>>[0];
+
+function refreshContext(overrides: Partial<RefreshContext>): RefreshContext {
+	// SAFETY: refreshModels reads only allowNetwork, stored, signal, and publish.
+	return {
+		allowNetwork: false,
+		signal: new AbortController().signal,
+		publish: async () => true,
+		...overrides,
+	} as RefreshContext;
+}
+
+function stubCatalogFetch(): () => number {
+	let calls = 0;
+	globalThis.fetch = async (input) => {
+		calls++;
+		return Response.json(
+			String(input).includes("client_version=pi")
+				? { models: [grokCatalogEntry] }
+				: { data: [{ id: "grok-4.6", reasoning_efforts: [{ value: "high" }] }] },
+		);
 	};
-	console.warn = () => {};
+	return () => calls;
+}
+
+test("registers without network access so startup never waits on CLIProxyAPI", () => {
+	const originalFetch = globalThis.fetch;
+	const fetchCalls = stubCatalogFetch();
 	try {
-		await cliProxyAPIModels(pi, {
-			CLIPROXYAPI_ROOT_URL: "https://cliproxy.example.test",
-			CLIPROXYAPI_API_KEY: "test-key",
-		});
+		registerForTest();
+		assert.equal(fetchCalls(), 0);
 	} finally {
 		globalThis.fetch = originalFetch;
-		console.warn = originalWarn;
 	}
+});
 
-	assert.ok(providerConfig);
+test("startup refresh serves the stored catalog, or the fallback, without fetching", async () => {
+	const { refreshModels } = registerForTest();
+	assert.ok(refreshModels);
+	const originalFetch = globalThis.fetch;
+	const fetchCalls = stubCatalogFetch();
+	try {
+		const storedModel = { ...getModels("openai")[0]!, provider: "cliproxyapi", id: "stored-model" };
+		const otherProvider = { ...storedModel, provider: "openai", id: "foreign" };
+		const fromStore = await refreshModels(refreshContext({ stored: { models: [storedModel, otherProvider] } }));
+		assert.deepEqual(fromStore.map((model) => model.id), ["stored-model"]);
+
+		const fromFallback = await refreshModels(refreshContext({}));
+		assert.ok(fromFallback.some((model) => model.id === "gpt-6.1-sol"));
+		assert.equal(fetchCalls(), 0);
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("network refresh fetches the live catalog and persists it for the next launch", async () => {
+	const { refreshModels } = registerForTest();
+	assert.ok(refreshModels);
+	const originalFetch = globalThis.fetch;
+	const fetchCalls = stubCatalogFetch();
+	const published: unknown[] = [];
+	try {
+		const models = await refreshModels(refreshContext({
+			allowNetwork: true,
+			publish: async (publication) => {
+				published.push(publication);
+				return true;
+			},
+		}));
+		assert.deepEqual(models.map((model) => model.id), ["grok-4.6"]);
+		assert.equal(fetchCalls(), 2);
+		assert.equal(published.length, 1);
+		const { persist } = published[0] as { persist: { models: Array<Record<string, unknown>> } };
+		assert.equal(persist.models[0]?.id, "grok-4.6");
+		assert.equal(persist.models[0]?.provider, "cliproxyapi");
+		assert.equal(persist.models[0]?.baseUrl, "https://cliproxy.example.test/v1");
+	} finally {
+		globalThis.fetch = originalFetch;
+	}
+});
+
+test("registers the configured GPT-6.1, GPT-6, and Grok models from the fallback catalog", () => {
+	const providerConfig = registerForTest();
 	const registeredModels = providerConfig.models ?? [];
 	for (const [id, name, contextWindow, maxTokens] of [
 		["gpt-6-astra", "GPT 6.0 Astra via CLIProxyAPI", 272_000, 128_000],
@@ -184,40 +259,7 @@ test("rewrites Sol Fast requests to the priority service tier", () => {
 });
 
 test("compaction rewrites Sol Fast to the upstream model and priority tier", async () => {
-	let providerConfig: ProviderConfig | undefined;
-	const recordingApi = {
-		registerProvider(_providerName: string, config: ProviderConfig) {
-			providerConfig = config;
-		},
-	};
-	// SAFETY: The extension uses only registerProvider; this recording API supplies that operation.
-	const pi = recordingApi as unknown as ExtensionAPI;
-	const originalFetch = globalThis.fetch;
-	globalThis.fetch = async (input) => {
-		const url = String(input);
-		return Response.json(
-			url.includes("client_version=pi")
-				? {
-					models: [{
-						slug: "gpt-5.6-sol",
-						display_name: "GPT 5.6 Sol",
-						visibility: "list",
-						supported_in_api: true,
-					}],
-				}
-				: { data: [{ id: "gpt-5.6-sol", reasoning_efforts: [{ value: "high" }] }] },
-		);
-	};
-	try {
-		await cliProxyAPIModels(pi, {
-			CLIPROXYAPI_ROOT_URL: "https://cliproxy.example.test",
-			CLIPROXYAPI_API_KEY: "test-key",
-		});
-	} finally {
-		globalThis.fetch = originalFetch;
-	}
-
-	assert.ok(providerConfig);
+	const providerConfig = registerForTest();
 	const baseModel = getModels("openai")[0];
 	assert.ok(baseModel);
 	const fastModel = {
