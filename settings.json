@@ -14,7 +14,7 @@
   "followUpMode": "all",
   "enableInstallTelemetry": false,
   "theme": "catppuccin-macchiato",
-  "lastChangelogVersion": "1.5.2",
+  "lastChangelogVersion": "1.6.0",
   "collapseChangelog": true,
   "enabledModels": [
     "cliproxyapi/gpt-6.1-sol",
@@ -28,6 +28,7 @@
       "skills": []
     },
     "npm:@ff-labs/pi-fff",
-    "https://github.com/earendil-works/pi-claude-code"
+    "https://github.com/earendil-works/pi-claude-code",
+    "git:github.com/dmmulroy/rex-sdk"
   ]
 }
