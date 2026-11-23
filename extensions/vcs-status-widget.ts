@@ -274,6 +274,14 @@ export function createVcsStatusWidget(options: VcsStatusWidgetOptions = {}) {
       void refresh.request(ctx);
     });
 
+    pi.on("model_select", (_event, ctx) => {
+      void refresh.request(ctx);
+    });
+
+    pi.on("thinking_level_select", (_event, ctx) => {
+      void refresh.request(ctx);
+    });
+
     pi.on("session_shutdown", async (_event, ctx) => {
       refresh.stop();
       if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);

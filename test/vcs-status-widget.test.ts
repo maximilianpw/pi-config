@@ -311,3 +311,31 @@ test("input preserves continue semantics", async () => {
   assert.deepEqual(await handlers.get("input")!({}, ctx), { action: "continue" });
   await handlers.get("session_shutdown")!({}, ctx);
 });
+
+for (const event of ["model_select", "thinking_level_select"]) {
+  test(`${event} refreshes the status bar without waiting for a prompt`, async () => {
+    const handlers = new Map<string, (...args: any[]) => any>();
+    const pi = {
+      on(name: string, handler: (...args: any[]) => any) {
+        handlers.set(name, handler);
+      },
+    } as unknown as ExtensionAPI;
+    createVcsStatusWidget({ summarize: async () => "clean" })(pi);
+    const writes: Array<string[] | undefined> = [];
+    const ctx = context("/repo", writes);
+    await handlers.get("session_start")!({}, ctx);
+
+    const switched = {
+      ...ctx,
+      model: { ...ctx.model!, name: "Claude Opus 5.5" },
+      thinkingLevel: "low",
+    } as ExtensionContext;
+    await handlers.get(event)?.({}, switched);
+    await nextMicrotask();
+    await nextMicrotask();
+
+    assert.deepEqual(writes.at(-1), [formatStatusBar(switched, "clean")]);
+    assert.match(writes.at(-1)![0]!, /^Claude Opus 5\.5 › think:low › /);
+    await handlers.get("session_shutdown")!({}, ctx);
+  });
+}
