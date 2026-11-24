@@ -31,7 +31,7 @@ The `executor` MCP server keeps the default codemode exposure. Server descriptio
 
 ## Pi v1 defaults and development
 
-- The default model is `cliproxyapi/gpt-6.1-sol` at `high` thinking. `enabledModels` limits startup selection and Ctrl+P cycling to GPT-6.1 Sol and GPT-6 Astra through CLIProxyAPI, and Claude Opus 5.5 and Fable 5.2 through `pi-claude-code`; `/model` still lists every available model.
+- The default model is `pi-claude-cli/claude-opus-5-5` at `high` thinking. `enabledModels` limits startup selection and Ctrl+P cycling to GPT-6.1 Sol and GPT-6 Astra through CLIProxyAPI, and Claude Opus 5.5 and Fable 5.2 through [`pi-claude-cli`](https://github.com/dmmulroy/pi-claude-cli), which runs them on the Claude subscription via the `claude` CLI; `/model` still lists every available model.
 - The four Pi SDK dependencies are pinned together to `1.5.2`, matching the installed host used to validate these extensions. Update them and `bun.lock` together when upgrading Pi.
 - `defaultTools` adds `codemode` and `tool_search` without replacing the normal file and shell tools. Codemode remains available even when no MCP server connects; its default `on` mode keeps direct tools available too.
 - `quietStartup: "header"` keeps version/key hints and hides the repetitive resource listing. Fullscreen comes from Pi v1's default; the custom Catppuccin theme remains selected.

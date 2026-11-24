@@ -1,7 +1,7 @@
 {
   "$schema": "https://pi.dev/schemas/settings.schema.json",
-  "defaultProvider": "cliproxyapi",
-  "defaultModel": "gpt-6.1-sol",
+  "defaultProvider": "pi-claude-cli",
+  "defaultModel": "claude-opus-5-5",
   "defaultThinkingLevel": "high",
   "defaultTools": [
     "+codemode",
@@ -19,8 +19,8 @@
   "enabledModels": [
     "cliproxyapi/gpt-6.1-sol",
     "cliproxyapi/gpt-6-astra",
-    "claude-code/claude-opus-5-5",
-    "claude-code/claude-fable-5-2"
+    "pi-claude-cli/claude-opus-5-5",
+    "pi-claude-cli/claude-fable-5-2"
   ],
   "packages": [
     {
@@ -28,7 +28,7 @@
       "skills": []
     },
     "npm:@ff-labs/pi-fff",
-    "https://github.com/earendil-works/pi-claude-code",
+    "git:github.com/dmmulroy/pi-claude-cli",
     "git:github.com/dmmulroy/rex-sdk"
   ]
 }
