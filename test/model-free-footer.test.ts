@@ -5,7 +5,7 @@ import type {
   ReadonlyFooterDataProvider,
   Theme,
 } from "@earendil-works/pi-coding-agent";
-import { installModelFreeFooter } from "../extensions/model-free-footer.ts";
+import { computeSessionUsage, installModelFreeFooter } from "../extensions/model-free-footer.ts";
 
 type FooterFactory = Exclude<Parameters<ExtensionContext["ui"]["setFooter"]>[0], undefined>;
 
@@ -24,6 +24,12 @@ function context() {
       return { tokens: 8_300, contextWindow: 272_000, percent: 3.1 };
     },
     sessionManager: {
+      getSessionId() {
+        return "session";
+      },
+      getLeafId() {
+        return null;
+      },
       getSessionName() {
         return undefined;
       },
@@ -66,4 +72,47 @@ test("lines up extension statuses on the left and usage on the right", () => {
   assert.equal(lines.length, 1);
   assert.equal(lines[0]?.length, 100);
   assert.match(lines[0] ?? "", /^quota 58% · 2\/2 ready MCP 0\/1 +3\.1%\/272k \(auto\)$/);
+});
+
+const usage = (input: number, cost: number) => ({
+  input,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: input + 1,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+});
+
+test("session usage includes usage entries such as cache warming", () => {
+  const totals = computeSessionUsage([
+    { type: "message", message: { role: "assistant", usage: usage(100, 0.5) } },
+    { type: "usage", kind: "cache_warm", usage: usage(40, 0.25) },
+  ] as never);
+  assert.equal(totals.input, 140);
+  assert.equal(totals.output, 2);
+  assert.equal(totals.cost, 0.75);
+});
+
+test("footer rescans entries only when the leaf moves", () => {
+  let leaf = "a";
+  let scans = 0;
+  const ctx = context();
+  Object.assign(ctx.sessionManager, {
+    getLeafId: () => leaf,
+    getEntries: () => {
+      scans += 1;
+      return [];
+    },
+  });
+  let factory: FooterFactory | undefined;
+  installModelFreeFooter(ctx, (next) => {
+    factory = next;
+  });
+  const component = factory!({ requestRender() {} } as never, plainTheme, footerData);
+  component.render(80);
+  component.render(80);
+  assert.equal(scans, 1);
+  leaf = "b";
+  component.render(80);
+  assert.equal(scans, 2);
 });

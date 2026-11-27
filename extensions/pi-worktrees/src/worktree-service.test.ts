@@ -68,7 +68,7 @@ test("GitWorktreeService lists, creates, and safely removes canonical worktrees"
 
   await writeFile(join(fixture.topicWorktree, "dirty.txt"), "uncommitted\n", "utf8");
   const dirtyRemoval = await service.removeWorktree(fixture.mainWorktree, {
-    localDirectory: "topic",
+    path: fixture.topicWorktree,
     branchCleanup: "keep",
   });
   assert.equal(dirtyRemoval._tag, "err");
@@ -76,7 +76,7 @@ test("GitWorktreeService lists, creates, and safely removes canonical worktrees"
 
   await rm(join(fixture.topicWorktree, "dirty.txt"));
   const removed = await service.removeWorktree(fixture.mainWorktree, {
-    localDirectory: "topic",
+    path: fixture.topicWorktree,
     branchCleanup: "delete-merged",
   });
   if (removed._tag === "err") assert.fail(removed.error.message);
@@ -85,6 +85,28 @@ test("GitWorktreeService lists, creates, and safely removes canonical worktrees"
   const finalInventory = await service.listWorktrees(fixture.mainWorktree);
   if (finalInventory._tag === "err") assert.fail(finalInventory.error.message);
   assert.deepEqual(finalInventory.value.worktrees.map((worktree) => worktree.localDirectory), ["main"]);
+});
+
+test("GitWorktreeService removes an external checkout by path, not by its directory name", async (context) => {
+  const fixture = await createCanonicalWorktreeFixture();
+  context.after(async () => {
+    await rm(fixture.temporaryDirectory, { recursive: true, force: true });
+  });
+  const external = join(fixture.temporaryDirectory, "elsewhere", "main");
+  await runGit(fixture.repositoryRoot, ["worktree", "add", "-q", "-b", "external", external, "main"]);
+
+  const service = new GitWorktreeService(new NodeWorktreeCommandRunner(), {
+    createWorktreeScriptPath: "/not-used",
+  });
+  const removed = await service.removeWorktree(fixture.mainWorktree, { path: external, branchCleanup: "keep" });
+  if (removed._tag === "err") assert.fail(removed.error.message);
+
+  const inventory = await service.listWorktrees(fixture.mainWorktree);
+  if (inventory._tag === "err") assert.fail(inventory.error.message);
+  assert.deepEqual(
+    inventory.value.worktrees.map((worktree) => worktree.path),
+    [await realpath(fixture.mainWorktree)],
+  );
 });
 
 test("GitWorktreeService rejects repositories outside the canonical layout", async (context) => {

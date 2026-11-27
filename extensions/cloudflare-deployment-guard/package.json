@@ -1,0 +1,15 @@
+{
+  "name": "pi-cloudflare-deployment-guard",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {
+    "check": "bun run typecheck && bun run test",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "replay-sessions": "node --import tsx scripts/replay-sessions.ts"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

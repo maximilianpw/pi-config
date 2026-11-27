@@ -8,8 +8,9 @@ separate `nix-config` checkout links these sources into `~/.pi/agent`.
 
 - Edit this checkout, never installed links under `~/.pi/agent` or files in
   `/nix/store`.
-- `settings.json` and model JSON files own Pi configuration. Each extension's
-  entry point and nearest `package.json` own its runtime behavior and checks.
+- Model JSON files here own Pi's providers; `settings.json` lives in
+  `nix-config` (`users/maxpw/files/editable/agents/pi/settings.json`).
+  Each extension's entry point and nearest `package.json` own its runtime behavior and checks.
 - Shared extension code belongs in `extensions/shared/`; keep package-specific
   code inside its extension. Preserve compatibility with the locked
   `@earendil-works/pi-*` APIs and update `bun.lock` with dependency changes.
@@ -37,8 +38,7 @@ inspected, and skipped checks are reported.
 
 - Never commit `auth.json`, `.env`, sessions, caches, logs, credentials, tokens,
   or captured provider responses. Keep diagnostics redacted.
-- Unit checks must not contact provider APIs or depend on live credentials. The
-  subagents package's `test:live` is opt-in and is not part of normal validation.
+- Unit checks must not contact provider APIs or depend on live credentials.
 - Do not rebuild/apply `nix-config`, invoke `/reload` in a user's session, or
   contact operational services unless explicitly requested. Those actions are
   deployment, not repository validation.

@@ -24,6 +24,10 @@ import {
   worktreeSuccess,
 } from "./worktree-domain.ts";
 
+const OPERATION_TIMEOUT_MS = 30_000;
+const SLOW_OPERATION_TIMEOUT_MS = 120_000;
+const SLOW_OPERATIONS: ReadonlySet<GitWorktreeCommandFailed["operation"]> = new Set(["fetch", "create"]);
+
 /** Operations available to the interactive worktree manager. */
 export interface IWorktreeService {
   /** Discover the canonical root and list every linked checkout. */
@@ -137,15 +141,17 @@ export class GitWorktreeService implements IWorktreeService {
     input: RemoveWorktreeInput,
     signal?: AbortSignal,
   ): Promise<WorktreeResult<RemoveWorktreeOutcome>> {
-    const inputFailure = parseLocalDirectory(input.localDirectory);
-    if (inputFailure !== undefined) return worktreeFailure(inputFailure);
-
     const inventoryResult = await this.listWorktrees(cwd, signal);
     if (inventoryResult._tag === "err") return inventoryResult;
-    const target = inventoryResult.value.worktrees.find(
-      (worktree) => worktree.localDirectory === input.localDirectory,
-    );
-    if (target === undefined) return worktreeFailure(new WorktreeNotFound(input.localDirectory));
+    const requestedPath = await resolveExistingPath(input.path);
+    const target = (
+      await Promise.all(
+        inventoryResult.value.worktrees.map(async (worktree) =>
+          (await resolveExistingPath(worktree.path)) === requestedPath ? worktree : undefined,
+        ),
+      )
+    ).find((worktree) => worktree !== undefined);
+    if (target === undefined) return worktreeFailure(new WorktreeNotFound(input.path));
     if (target.isCurrent) return worktreeFailure(new CurrentWorktreeRemovalBlocked(target.path));
     if (target.lockedReason !== undefined) {
       return worktreeFailure(new LockedWorktreeRemovalBlocked(target.path, target.lockedReason));
@@ -159,7 +165,7 @@ export class GitWorktreeService implements IWorktreeService {
 
     const removeResult = await this.runGit(
       "remove",
-      ["-C", inventoryResult.value.root.path, "worktree", "remove", input.localDirectory],
+      ["-C", inventoryResult.value.root.path, "worktree", "remove", target.path],
       cwd,
       signal,
     );
@@ -281,9 +287,14 @@ export class GitWorktreeService implements IWorktreeService {
     cwd: string,
     signal?: AbortSignal,
   ): Promise<WorktreeResult<ExecResult, GitWorktreeCommandFailed>> {
-    const options: ExecOptions = { cwd, ...(signal === undefined ? {} : { signal }) };
+    const options: ExecOptions = {
+      cwd,
+      timeout: SLOW_OPERATIONS.has(operation) ? SLOW_OPERATION_TIMEOUT_MS : OPERATION_TIMEOUT_MS,
+      ...(signal === undefined ? {} : { signal }),
+    };
     try {
-      const result = await this.runner.run(command, args, options);
+      // Credential prompts would read the terminal Pi owns, so fail instead of waiting for input.
+      const result = await this.runner.run("env", ["GIT_TERMINAL_PROMPT=0", command, ...args], options);
       if (result.code !== 0) {
         return worktreeFailure(new GitWorktreeCommandFailed(operation, result.stderr || result.stdout, result.code));
       }

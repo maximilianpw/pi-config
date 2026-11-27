@@ -29,6 +29,10 @@ test("parseOwnerNameRepo accepts only a GitHub owner/name slug", () => {
   assert.equal(parseOwnerNameRepo("owner"), undefined);
   assert.equal(parseOwnerNameRepo("owner/repo/extra"), undefined);
   assert.equal(parseOwnerNameRepo("https://github.com/owner/repo"), undefined);
+  assert.equal(parseOwnerNameRepo("../.."), undefined);
+  assert.equal(parseOwnerNameRepo("owner/.."), undefined);
+  assert.equal(parseOwnerNameRepo("./repo"), undefined);
+  assert.equal(parseOwnerNameRepo("owner/.github"), "owner/.github");
 });
 
 test("comment limits keep the newest comments in chronological order", () => {

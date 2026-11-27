@@ -1,5 +1,9 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { request as requestHttp, type IncomingMessage } from "node:http";
+import { request as requestHttps } from "node:https";
+import { isIP, type LookupFunction } from "node:net";
+import { Readable } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import { err, ok, type Result } from "./result.ts";
 import { parsePublicHttpUrl, type ContentKind, type ParsePublicHttpUrlError, type ParsedContentType, type PublicHttpUrl } from "./types.ts";
 import type { PublicWebClient, PublicWebError, PublicWebRequest, PublicWebResponse } from "./public-web-client.ts";
@@ -18,21 +22,10 @@ const TEXT_MIME_TYPES = new Set([
 ]);
 const RASTER_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
-type LookupHost = (hostname: string) => Promise<readonly { readonly address: string }[]>;
+type ResolvedAddress = { readonly address: string; readonly family?: number };
+type LookupHost = (hostname: string) => Promise<readonly ResolvedAddress[]>;
 
 const lookupHost: LookupHost = (hostname) => lookup(hostname, { all: true, verbatim: true });
-
-export interface FetchWithRedirectsOptions {
-	headers: Record<string, string>;
-	signal?: AbortSignal;
-	maxRedirects: number;
-	blockPrivateHosts: boolean;
-}
-
-export interface FetchWithRedirectsResult {
-	response: Response;
-	finalUrl: URL;
-}
 
 export interface ReadBodyResult {
 	buffer: Buffer;
@@ -72,62 +65,6 @@ export function isOperationTimeoutError(value: unknown): value is OperationTimeo
 
 export function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === "AbortError";
-}
-
-export function normalizeAndValidateUrl(rawUrl: string): URL {
-	const parsed = parsePublicHttpUrl(rawUrl);
-	if (parsed._tag === "err") {
-		throw new Error(renderSafeUrlParseError(parsed.error));
-	}
-	return new URL(parsed.value);
-}
-
-export async function fetchWithRedirects(
-	initialUrl: URL,
-	options: FetchWithRedirectsOptions,
-): Promise<FetchWithRedirectsResult> {
-	let currentUrl = initialUrl;
-	let redirects = 0;
-
-	while (true) {
-		assertUrlHasNoCredentials(currentUrl);
-		if (options.blockPrivateHosts) {
-			await assertPublicUrl(currentUrl);
-		}
-
-		const response = await fetch(currentUrl, {
-			method: "GET",
-			headers: options.headers,
-			signal: options.signal,
-			redirect: "manual",
-		});
-
-		if (isRedirectStatus(response.status)) {
-			await response.body?.cancel().catch(() => undefined);
-			const location = response.headers.get("location");
-			if (!location) {
-				throw new Error("Redirect response was missing a Location header");
-			}
-			if (redirects >= options.maxRedirects) {
-				throw new Error("Too many redirects while fetching URL");
-			}
-			let nextUrl: URL;
-			try {
-				nextUrl = new URL(location, currentUrl);
-			} catch {
-				throw new Error("Redirect response had an invalid Location header");
-			}
-			if (nextUrl.protocol !== "http:" && nextUrl.protocol !== "https:") {
-				throw new Error("Redirected to unsupported protocol");
-			}
-			assertUrlHasNoCredentials(nextUrl);
-			currentUrl = nextUrl;
-			redirects += 1;
-			continue;
-		}
-
-		return { response, finalUrl: currentUrl };
-	}
 }
 
 export async function readBodyWithLimit(
@@ -223,31 +160,6 @@ export function normalizeCharset(charset: string | undefined): string | undefine
 	return normalized;
 }
 
-async function assertPublicUrl(url: URL): Promise<void> {
-	const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
-	if (isBlockedHostname(hostname)) {
-		throw new Error("Blocked private or local host");
-	}
-	if (isPrivateOrLocalIp(hostname)) {
-		throw new Error("Blocked private or local IP address");
-	}
-
-	let records: readonly { readonly address: string }[];
-	try {
-		records = await lookupHost(hostname);
-	} catch {
-		throw new Error("Could not safely resolve host");
-	}
-	if (records.length === 0) {
-		throw new Error("Could not safely resolve host");
-	}
-	for (const record of records) {
-		if (isPrivateOrLocalIp(record.address)) {
-			throw new Error("Blocked private, local, or reserved IP address");
-		}
-	}
-}
-
 function isRedirectStatus(status: number): boolean {
 	return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
@@ -258,25 +170,6 @@ function isBlockedHostname(hostname: string): boolean {
 
 function stripIpv6Brackets(hostname: string): string {
 	return hostname.replace(/^\[/, "").replace(/\]$/, "");
-}
-
-function assertUrlHasNoCredentials(url: URL): void {
-	if (url.username || url.password) {
-		throw new Error("URL credentials are not supported");
-	}
-}
-
-function renderSafeUrlParseError(error: ParsePublicHttpUrlError): string {
-	switch (error._tag) {
-		case "EmptyUrl":
-			return "URL cannot be empty";
-		case "UnsupportedUrlProtocol":
-			return "URL must start with http:// or https://";
-		case "InvalidUrl":
-			return "Invalid URL";
-		case "UrlCredentialsUnsupported":
-			return "URL credentials are not supported";
-	}
 }
 
 export function isPrivateOrLocalIp(input: string): boolean {
@@ -511,21 +404,18 @@ async function fetchWithUserAgent(
 			return currentPublicUrl;
 		}
 
+		let pinnedAddresses: readonly ResolvedAddress[] | undefined;
 		if (request.blockPrivateHosts) {
 			const publicCheck = await checkPublicUrl(currentUrl, currentPublicUrl.value, resolveHostname);
 			if (publicCheck._tag === "err") {
 				return publicCheck;
 			}
+			pinnedAddresses = publicCheck.value;
 		}
 
 		let response: Response;
 		try {
-			response = await fetch(currentUrl, {
-				method: "GET",
-				headers: createPublicWebHeaders(request.accept, userAgent),
-				signal,
-				redirect: "manual",
-			});
+			response = await requestOnce(currentUrl, createPublicWebHeaders(request.accept, userAgent), signal, pinnedAddresses);
 		} catch (cause: unknown) {
 			if (signal?.aborted || isAbortError(cause)) {
 				return err(signal ? classifySignalAbort(signal, cause) : { _tag: "PublicWebCancelled", cause });
@@ -566,14 +456,105 @@ function createPublicWebHeaders(accept: string, userAgent: string): Record<strin
 		"User-Agent": userAgent,
 		Accept: accept,
 		"Accept-Language": "en-US,en;q=0.9",
+		"Accept-Encoding": "gzip, deflate, br",
 	};
+}
+
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
+/**
+ * Sends one GET without following redirects. When `pinnedAddresses` is given, the socket may only connect
+ * to those already-validated addresses: `fetch` would resolve the host again, and a DNS answer that
+ * changed between the check and the connection (DNS rebinding) could reach a private network. A fresh
+ * agent per request keeps a pooled socket from bypassing the lookup.
+ */
+export function requestOnce(
+	url: URL,
+	headers: Record<string, string>,
+	signal: AbortSignal | undefined,
+	pinnedAddresses: readonly ResolvedAddress[] | undefined,
+): Promise<Response> {
+	const send = url.protocol === "https:" ? requestHttps : requestHttp;
+	return new Promise((resolve, reject) => {
+		const outgoing = send(
+			url,
+			{
+				method: "GET",
+				headers,
+				signal,
+				agent: false,
+				...(pinnedAddresses ? { lookup: pinnedLookup(pinnedAddresses) } : {}),
+			},
+			(incoming) => {
+				try {
+					resolve(toWebResponse(incoming));
+				} catch (cause: unknown) {
+					incoming.destroy();
+					reject(cause);
+				}
+			},
+		);
+		outgoing.on("error", reject);
+		outgoing.end();
+	});
+}
+
+function pinnedLookup(addresses: readonly ResolvedAddress[]): LookupFunction {
+	const entries = addresses.map(({ address, family }) => ({ address, family: family ?? isIP(address) }));
+	return (_hostname, options, callback) => {
+		const wanted = typeof options === "object" && options.family ? options.family : 0;
+		const matching = wanted === 0 ? entries : entries.filter((entry) => entry.family === wanted);
+		const first = matching[0];
+		if (!first) {
+			callback(Object.assign(new Error("No validated address for the requested family"), { code: "ENOTFOUND" }), "", 0);
+			return;
+		}
+		if (typeof options === "object" && options.all) {
+			(callback as unknown as (error: null, addresses: typeof matching) => void)(null, matching);
+			return;
+		}
+		callback(null, first.address, first.family);
+	};
+}
+
+function toWebResponse(incoming: IncomingMessage): Response {
+	const headers = new Headers();
+	for (let index = 0; index + 1 < incoming.rawHeaders.length; index += 2) {
+		headers.append(incoming.rawHeaders[index] ?? "", incoming.rawHeaders[index + 1] ?? "");
+	}
+	const status = incoming.statusCode ?? 0;
+	const init = { status, statusText: incoming.statusMessage ?? "", headers };
+	if (NULL_BODY_STATUSES.has(status)) {
+		incoming.resume();
+		return new Response(null, init);
+	}
+	const decoded = decodeContentEncoding(incoming, headers);
+	return new Response(Readable.toWeb(decoded) as ReadableStream<Uint8Array>, init);
+}
+
+/** Undoes the content encodings this client advertises; anything else is passed through as bytes. */
+function decodeContentEncoding(incoming: IncomingMessage, headers: Headers): Readable {
+	const encoding = headers.get("content-encoding")?.trim().toLowerCase();
+	const decoder =
+		encoding === "gzip" || encoding === "x-gzip"
+			? createGunzip()
+			: encoding === "deflate"
+				? createInflate()
+				: encoding === "br"
+					? createBrotliDecompress()
+					: undefined;
+	if (!decoder) return incoming;
+	headers.delete("content-encoding");
+	headers.delete("content-length");
+	incoming.on("error", (cause) => decoder.destroy(cause));
+	return incoming.pipe(decoder);
 }
 
 async function checkPublicUrl(
 	url: URL,
 	publicUrl: PublicHttpUrl,
 	resolveHostname: LookupHost,
-): Promise<Result<void, PublicWebError>> {
+): Promise<Result<readonly ResolvedAddress[] | undefined, PublicWebError>> {
 	const hostname = stripIpv6Brackets(url.hostname).toLowerCase();
 	if (isBlockedHostname(hostname)) {
 		return err({ _tag: "PrivateHostBlocked", url: publicUrl });
@@ -581,8 +562,12 @@ async function checkPublicUrl(
 	if (isPrivateOrLocalIp(hostname)) {
 		return err({ _tag: "PrivateIpBlocked", url: publicUrl });
 	}
+	// The socket connects to an IP literal without a lookup, so there is nothing to pin.
+	if (isIP(hostname) !== 0) {
+		return ok(undefined);
+	}
 
-	let records: readonly { readonly address: string }[];
+	let records: readonly ResolvedAddress[];
 	try {
 		records = await resolveHostname(hostname);
 	} catch {
@@ -597,7 +582,7 @@ async function checkPublicUrl(
 		}
 	}
 
-	return ok(undefined);
+	return ok(records);
 }
 
 function publicHttpUrlFromUrl(url: URL): Result<PublicHttpUrl, PublicWebError> {

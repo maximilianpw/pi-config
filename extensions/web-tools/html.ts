@@ -146,10 +146,6 @@ export function htmlToText(rawHtml: string, baseUrl: string): string {
 	return cleanupText(text);
 }
 
-export function htmlToTextFallback(rawHtml: string): string {
-	return cleanupText(convertHtmlToText(rawHtml, { wordwrap: false }));
-}
-
 export function isPoorMarkdownConversion(markdown: string): boolean {
 	const rawBlockTags = markdown.match(RAW_HTML_BLOCK_TAG_RE)?.length ?? 0;
 	if (rawBlockTags >= 6) return true;
@@ -174,8 +170,9 @@ function createTurndownService(): TurndownService {
 }
 
 function extractReadableRoot(document: Document): Element {
+	const stats = computeSubtreeStats(document.documentElement);
 	for (const selector of PREFERRED_CONTENT_SELECTORS) {
-		const match = pickBestCandidate(Array.from(document.querySelectorAll(selector)));
+		const match = pickBestCandidate(Array.from(document.querySelectorAll(selector)), stats);
 		if (match) {
 			return cloneElement(match);
 		}
@@ -186,15 +183,82 @@ function extractReadableRoot(document: Document): Element {
 		...Array.from(body.querySelectorAll("article, main, section, div")),
 		body,
 	];
-	return cloneElement(pickBestCandidate(fallbackCandidates) ?? body);
+	return cloneElement(pickBestCandidate(fallbackCandidates, stats) ?? body);
 }
 
-function pickBestCandidate(elements: Element[]): Element | undefined {
+/** Counts below one element, excluding the element itself. */
+type SubtreeStats = {
+	/** Whitespace-collapsed text length, plus one separator per text run. */
+	readonly textLength: number;
+	readonly linkTextLength: number;
+	readonly paragraphCount: number;
+	readonly listItemCount: number;
+	readonly headingCount: number;
+	readonly tableCount: number;
+};
+
+const EMPTY_STATS: SubtreeStats = {
+	textLength: 0,
+	linkTextLength: 0,
+	paragraphCount: 0,
+	listItemCount: 0,
+	headingCount: 0,
+	tableCount: 0,
+};
+const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
+const TEXT_NODE = 3;
+const ELEMENT_NODE = 1;
+
+/**
+ * Computes every element's subtree statistics in one post-order pass. Scoring each candidate with its own
+ * `querySelectorAll` walk costs O(elements x depth), which is quadratic on deeply nested layouts.
+ */
+function computeSubtreeStats(root: Element): ReadonlyMap<Element, SubtreeStats> {
+	const stats = new Map<Element, SubtreeStats>();
+	const stack: Array<{ readonly element: Element; readonly childrenDone: boolean }> = [{ element: root, childrenDone: false }];
+	while (stack.length > 0) {
+		const frame = stack.pop();
+		if (!frame) break;
+		const { element } = frame;
+		if (!frame.childrenDone) {
+			stack.push({ element, childrenDone: true });
+			for (const child of Array.from(element.children)) stack.push({ element: child, childrenDone: false });
+			continue;
+		}
+		let textLength = 0;
+		let linkTextLength = 0;
+		let paragraphCount = 0;
+		let listItemCount = 0;
+		let headingCount = 0;
+		let tableCount = 0;
+		for (const node of Array.from(element.childNodes)) {
+			if (node.nodeType === TEXT_NODE) {
+				const text = node.textContent?.replace(/\s+/g, " ").trim() ?? "";
+				textLength += text.length > 0 ? text.length + 1 : 0;
+				continue;
+			}
+			if (node.nodeType !== ELEMENT_NODE) continue;
+			const child = node as Element;
+			const childStats = stats.get(child) ?? EMPTY_STATS;
+			const tag = child.tagName.toLowerCase();
+			textLength += childStats.textLength;
+			linkTextLength += tag === "a" ? childStats.textLength : childStats.linkTextLength;
+			paragraphCount += childStats.paragraphCount + (tag === "p" ? 1 : 0);
+			listItemCount += childStats.listItemCount + (tag === "li" ? 1 : 0);
+			headingCount += childStats.headingCount + (HEADING_TAGS.has(tag) ? 1 : 0);
+			tableCount += childStats.tableCount + (tag === "table" ? 1 : 0);
+		}
+		stats.set(element, { textLength, linkTextLength, paragraphCount, listItemCount, headingCount, tableCount });
+	}
+	return stats;
+}
+
+function pickBestCandidate(elements: Element[], stats: ReadonlyMap<Element, SubtreeStats>): Element | undefined {
 	let best: Element | undefined;
 	let bestScore = Number.NEGATIVE_INFINITY;
 
 	for (const element of elements) {
-		const score = scoreContentCandidate(element);
+		const score = scoreContentCandidate(element, stats.get(element) ?? EMPTY_STATS);
 		if (score > bestScore) {
 			best = element;
 			bestScore = score;
@@ -204,17 +268,10 @@ function pickBestCandidate(elements: Element[]): Element | undefined {
 	return best;
 }
 
-function scoreContentCandidate(element: Element): number {
-	const textLength = getNormalizedText(element).length;
+function scoreContentCandidate(element: Element, stats: SubtreeStats): number {
+	const { textLength, linkTextLength, paragraphCount, listItemCount, headingCount, tableCount } = stats;
 	if (textLength === 0) return Number.NEGATIVE_INFINITY;
 
-	const linkTextLength = Array.from(element.querySelectorAll("a"))
-		.map((link) => getNormalizedText(link).length)
-		.reduce((total, value) => total + value, 0);
-	const paragraphCount = element.querySelectorAll("p").length;
-	const listItemCount = element.querySelectorAll("li").length;
-	const headingCount = element.querySelectorAll("h1, h2, h3, h4, h5, h6").length;
-	const tableCount = element.querySelectorAll("table").length;
 	const ownPenalty = isBoilerplateElement(element) ? 800 : 0;
 	const linkDensity = textLength > 0 ? linkTextLength / textLength : 1;
 

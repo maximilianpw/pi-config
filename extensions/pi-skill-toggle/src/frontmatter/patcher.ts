@@ -1,7 +1,8 @@
 import type { FrontmatterDocument, FrontmatterPatch, SkillInvocationMode } from "../types.ts";
 
 const DISABLE_KEY = "disable-model-invocation";
-const DISABLE_KEY_RE = /^\s*disable-model-invocation\s*:/;
+// Top-level keys only: the parser reads top-level keys, and rewriting a nested key would unindent it.
+const DISABLE_KEY_RE = /^disable-model-invocation\s*:/;
 
 export interface FrontmatterPatcher {
   patchInvocationMode(doc: FrontmatterDocument, desiredMode: SkillInvocationMode): FrontmatterPatch;

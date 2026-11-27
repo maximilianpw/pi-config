@@ -26,11 +26,16 @@ export class NodeFileSystem implements FileSystem {
       mode = undefined;
     }
 
-    await fs.writeFile(tmp, content, "utf8");
-    if (mode !== undefined) {
-      await fs.chmod(tmp, mode);
+    try {
+      await fs.writeFile(tmp, content, "utf8");
+      if (mode !== undefined) {
+        await fs.chmod(tmp, mode);
+      }
+      await fs.rename(tmp, path);
+    } catch (error) {
+      await fs.rm(tmp, { force: true });
+      throw error;
     }
-    await fs.rename(tmp, path);
   }
 
   async access(path: string, mode = constants.F_OK): Promise<boolean> {

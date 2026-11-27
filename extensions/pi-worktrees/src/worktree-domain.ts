@@ -61,7 +61,8 @@ export type CreateWorktreeOutcome = {
 
 /** Policy controls for safely removing a linked worktree. */
 export type RemoveWorktreeInput = {
-  readonly localDirectory: string;
+  /** Absolute checkout path from the inventory; external checkouts can share a directory name. */
+  readonly path: string;
   readonly branchCleanup: "keep" | "delete-merged";
 };
 
@@ -129,12 +130,12 @@ export class InvalidWorktreeInput extends Error {
   }
 }
 
-/** The requested linked worktree is not registered under the canonical root. */
+/** The requested linked worktree is not registered with the canonical root. */
 export class WorktreeNotFound extends Error {
   readonly _tag = "WorktreeNotFound" as const;
 
-  constructor(readonly localDirectory: string) {
-    super(`Worktree not found under the canonical root: ${localDirectory}`);
+  constructor(readonly target: string) {
+    super(`Worktree not found under the canonical root: ${target}`);
   }
 }
 

@@ -72,7 +72,8 @@ const DEFAULT_MAX_COMMENTS = 200;
 const MAX_MAX_COMMENTS = 500;
 const MAX_COMMENT_BODY_CHARS = 16 * 1024;
 const MAX_OUTPUT_CHARS = 40 * 1024;
-const GITHUB_REPO_PATTERN = /^[\w.-]+\/[\w.-]+$/;
+// Owner and name segments that are only dots would turn `repos/<repo>/...` into a path traversal.
+const GITHUB_REPO_PATTERN = /^(?!\.{1,2}\/)[\w.-]+\/(?!\.{1,2}$)[\w.-]+$/;
 
 const toolSchema = Type.Object({
   prNumber: Type.Optional(Type.Integer({ minimum: 1, description: "Pull request number. If omitted, uses the PR for the current git branch or jj bookmark." })),

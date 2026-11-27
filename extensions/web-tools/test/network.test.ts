@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { once } from "node:events";
-import { FetchPublicWebClient, classifyMimeType, isPrivateOrLocalIp, parseContentType } from "../network.ts";
+import { gzipSync } from "node:zlib";
+import { FetchPublicWebClient, classifyMimeType, isPrivateOrLocalIp, parseContentType, requestOnce } from "../network.ts";
 import { parsePublicHttpUrl } from "../types.ts";
 import type { PublicWebRequest } from "../public-web-client.ts";
 
@@ -192,6 +193,49 @@ function makeRequest(
 		blockPrivateHosts: overrides.blockPrivateHosts ?? true,
 	};
 }
+
+test("requestOnce connects only to pinned addresses instead of resolving the host again", async () => {
+	const server = await startServer((request, response) => {
+		response.writeHead(200, { "content-type": "text/plain" });
+		response.end(String(request.headers.host));
+	});
+	try {
+		const port = new URL(server.origin).port;
+		// `.invalid` never resolves, so a response proves the socket used the pinned address.
+		const url = new URL(`http://rebind.invalid:${port}/`);
+		const response = await requestOnce(url, {}, undefined, [{ address: "127.0.0.1", family: 4 }]);
+
+		assert.equal(response.status, 200);
+		assert.equal(await response.text(), `rebind.invalid:${port}`);
+		await assert.rejects(requestOnce(url, {}, undefined, undefined));
+	} finally {
+		await server.close();
+	}
+});
+
+test("FetchPublicWebClient decodes compressed bodies and accepts empty 204 responses", async () => {
+	const server = await startServer((request, response) => {
+		if (request.url === "/empty") {
+			response.writeHead(204);
+			response.end();
+			return;
+		}
+		response.writeHead(200, { "content-type": "text/plain", "content-encoding": "gzip" });
+		response.end(gzipSync("compressed body"));
+	});
+	try {
+		const client = new FetchPublicWebClient();
+		const compressed = await client.get(makeRequest(`${server.origin}/gzip`, { blockPrivateHosts: false }));
+		assert.equal(compressed._tag, "ok");
+		assert.equal(compressed.value.body.toString("utf8"), "compressed body");
+
+		const empty = await client.get(makeRequest(`${server.origin}/empty`, { blockPrivateHosts: false }));
+		assert.equal(empty._tag, "ok");
+		assert.equal(empty.value.bytes, 0);
+	} finally {
+		await server.close();
+	}
+});
 
 async function startServer(
 	handler: RequestHandler,

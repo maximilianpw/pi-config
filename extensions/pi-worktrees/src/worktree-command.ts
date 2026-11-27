@@ -131,7 +131,7 @@ async function runRemoveWorktreeDialog(
 
   ctx.ui.setStatus("worktrees", ctx.ui.theme.fg("accent", "worktrees:removing"));
   const result = await worktrees.removeWorktree(ctx.cwd, {
-    localDirectory: target.localDirectory,
+    path: target.path,
     branchCleanup,
   });
   ctx.ui.setStatus("worktrees", undefined);

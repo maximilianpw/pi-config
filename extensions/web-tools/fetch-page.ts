@@ -128,24 +128,10 @@ export function getAcceptHeader(format: WebFetchFormat): string {
 	}
 }
 
-/** Build legacy webfetch request headers for tests and UI-adjacent callers. */
-export function createWebFetchHeaders(accept: string, userAgent = OPENCODE_WEBFETCH_DEFAULT_USER_AGENT): Record<string, string> {
-	return {
-		"User-Agent": userAgent,
-		Accept: accept,
-		"Accept-Language": "en-US,en;q=0.9",
-	};
-}
-
 /** Return the configured fallback user agent or the web-tools default. */
 export function getFallbackUserAgent(configuredUserAgent?: string): string {
 	const trimmed = configuredUserAgent?.trim();
 	return trimmed || OPENCODE_WEBFETCH_FALLBACK_USER_AGENT;
-}
-
-/** Detect the Cloudflare challenge response that webfetch retries with a fallback user agent. */
-export function shouldRetryWithFallbackUserAgent(response: Pick<Response, "status" | "headers">): boolean {
-	return response.status === 403 && response.headers.get("cf-mitigated") === "challenge";
 }
 
 async function convertText(

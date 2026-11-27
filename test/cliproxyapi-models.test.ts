@@ -167,10 +167,17 @@ test("startup refresh serves the stored catalog, or the fallback, without fetchi
 	const originalFetch = globalThis.fetch;
 	const fetchCalls = stubCatalogFetch();
 	try {
-		const storedModel = { ...getModels("openai")[0]!, provider: "cliproxyapi", id: "stored-model" };
+		const storedModel = {
+			...getModels("openai")[0]!,
+			provider: "cliproxyapi",
+			id: "stored-model",
+			baseUrl: "https://old-endpoint.example.test/v1",
+		};
 		const otherProvider = { ...storedModel, provider: "openai", id: "foreign" };
 		const fromStore = await refreshModels(refreshContext({ stored: { models: [storedModel, otherProvider] } }));
 		assert.deepEqual(fromStore.map((model) => model.id), ["stored-model"]);
+		// A stored model must follow the current connection, not the endpoint it was fetched from.
+		assert.equal(fromStore[0]?.baseUrl, "https://cliproxy.example.test/v1");
 
 		const fromFallback = await refreshModels(refreshContext({}));
 		assert.ok(fromFallback.some((model) => model.id === "gpt-6.1-sol"));

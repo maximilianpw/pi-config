@@ -146,7 +146,7 @@ export default function askUser(pi: ExtensionAPI) {
         ctx.ui.custom<SelectionResult>((tui, theme, _kb, done) => {
           let optionIndex = 0;
           let editMode = false;
-          let cachedLines: string[] | undefined;
+          let cached: { width: number; lines: string[] } | undefined;
 
           let settled = false;
 
@@ -188,7 +188,7 @@ export default function askUser(pi: ExtensionAPI) {
           };
 
           function refresh() {
-            cachedLines = undefined;
+            cached = undefined;
             tui.requestRender();
           }
 
@@ -253,7 +253,7 @@ export default function askUser(pi: ExtensionAPI) {
           }
 
           function render(width: number): string[] {
-            if (cachedLines) return cachedLines;
+            if (cached?.width === width) return cached.lines;
 
             const lines: string[] = [];
             const add = (s: string) => lines.push(truncateToWidth(s, width));
@@ -312,14 +312,14 @@ export default function askUser(pi: ExtensionAPI) {
             }
             add(theme.fg("accent", "─".repeat(width)));
 
-            cachedLines = lines;
+            cached = { width, lines };
             return lines;
           }
 
           return {
             render,
             invalidate: () => {
-              cachedLines = undefined;
+              cached = undefined;
             },
             handleInput,
             dispose: () => {

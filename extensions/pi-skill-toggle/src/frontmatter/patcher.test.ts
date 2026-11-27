@@ -68,6 +68,24 @@ describe("MinimalFrontmatterPatcher", () => {
     assert.deepEqual(getDuplicateFrontmatterKeys(codec.parse(patch.newText)), []);
     assert.ok(patch.newText.includes("argument-hint: What next?\n---"));
   });
+
+  it("leaves a nested key with the same name untouched", () => {
+    const raw = [
+      "---",
+      "name: handoff",
+      "metadata:",
+      "  disable-model-invocation: legacy",
+      "---",
+      "",
+    ].join("\n");
+
+    const manual = patcher.patchInvocationMode(codec.parse(raw), "manual-only");
+    assert.ok(manual.newText.includes("metadata:\n  disable-model-invocation: legacy\n"));
+    assert.equal(countDisableKeys(manual.newText), 1);
+
+    const invocable = patcher.patchInvocationMode(codec.parse(raw), "agent-invocable");
+    assert.equal(invocable.newText, raw);
+  });
 });
 
 function countDisableKeys(raw: string): number {

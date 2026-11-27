@@ -53,3 +53,12 @@ test("projectFetchPageResultToPiToolResult truncates and records full output pat
 	assert.equal(store.writes.length, 1);
 	assert.equal(store.writes[0]?.prefix, "pi-webfetch-");
 });
+
+test("removeTempTextFiles deletes full-output files written by this process", async () => {
+	const { existsSync } = await import("node:fs");
+	const { removeTempTextFiles, writeTempTextFile } = await import("../temp.ts");
+	const path = await writeTempTextFile("pi-webfetch-test-", "out.txt", "full output");
+	assert.equal(existsSync(path), true);
+	await removeTempTextFiles();
+	assert.equal(existsSync(path), false);
+});

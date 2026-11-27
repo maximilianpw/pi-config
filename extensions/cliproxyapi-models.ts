@@ -268,11 +268,20 @@ async function fetchModels(
 	);
 }
 
-function storedModels(stored: Readonly<ModelsStoreEntry> | undefined): ProviderChatModelConfig[] | undefined {
-	const models = (stored?.models ?? []).filter(
-		(model: AnyModel): model is Model<Api> =>
-			model.provider === PROVIDER_ID && (model.type === undefined || model.type === "chat"),
-	);
+/**
+ * The stored snapshot keeps the endpoint it was fetched from. Rebind it to the current connection,
+ * because a model's own baseUrl overrides the provider's and would send today's key to an old host.
+ */
+function storedModels(
+	stored: Readonly<ModelsStoreEntry> | undefined,
+	baseUrl: string,
+): ProviderChatModelConfig[] | undefined {
+	const models = (stored?.models ?? [])
+		.filter(
+			(model: AnyModel): model is Model<Api> =>
+				model.provider === PROVIDER_ID && (model.type === undefined || model.type === "chat"),
+		)
+		.map((model) => ({ ...model, api: API, baseUrl }));
 	return models.length > 0 ? models : undefined;
 }
 
@@ -292,7 +301,7 @@ export default function cliProxyAPIModels(
 		models: FALLBACK_MODELS,
 		streamSimple: createCLIProxyAPIFastStream(),
 		async refreshModels(context) {
-			const cached = storedModels(context.stored) ?? FALLBACK_MODELS;
+			const cached = storedModels(context.stored, connection.baseUrl) ?? FALLBACK_MODELS;
 			if (!context.allowNetwork) return cached;
 
 			const models = await fetchModels(

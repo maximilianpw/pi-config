@@ -24,7 +24,7 @@ test("latest assistant Markdown is branch-aware and concatenates text blocks onl
 	const active = sessions.appendMessage(assistantMessage([
 		{ type: "thinking", thinking: "hidden" },
 		{ type: "text", text: "# Active" },
-		{ type: "image", data: "ignored", mimeType: "image/png" },
+		{ type: "toolCall", id: "call", name: "read", arguments: {} },
 		{ type: "text", text: "Second paragraph" },
 	]));
 	sessions.appendMessage(assistantMessage([{ type: "text", text: "# Abandoned" }]));

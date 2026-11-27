@@ -33,20 +33,6 @@ export interface ParsedContentType {
 	readonly kind: ContentKind;
 }
 
-export interface WebFetchDetails {
-	readonly requestedUrl: string;
-	readonly finalUrl: string;
-	readonly format: WebFetchFormat;
-	readonly status: number;
-	readonly mime: string;
-	readonly contentType: string;
-	readonly charset?: string;
-	readonly decoder?: string;
-	readonly bytes: number;
-	readonly image?: boolean;
-	readonly truncated?: boolean;
-	readonly fullOutputPath?: string;
-}
 /** Parse and normalize a public HTTP(S) URL from boundary input. */
 export function parsePublicHttpUrl(input: string): Result<PublicHttpUrl, ParsePublicHttpUrlError> {
 	const trimmed = input.trim();

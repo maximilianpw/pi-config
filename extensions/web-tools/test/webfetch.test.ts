@@ -2,11 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
 	createWebFetchTool,
-	createWebFetchHeaders,
+	describeRequestFailure,
 	getFallbackUserAgent,
-	OPENCODE_WEBFETCH_DEFAULT_USER_AGENT,
 	OPENCODE_WEBFETCH_FALLBACK_USER_AGENT,
-	shouldRetryWithFallbackUserAgent,
 } from "../webfetch.ts";
 
 test("webfetch execute rejects URL credentials with a safe message", async () => {
@@ -18,13 +16,6 @@ test("webfetch execute rejects URL credentials with a safe message", async () =>
 	);
 });
 
-test("createWebFetchHeaders uses the OpenCode browser-like default user agent", () => {
-	const headers = createWebFetchHeaders("text/html");
-	assert.equal(headers["User-Agent"], OPENCODE_WEBFETCH_DEFAULT_USER_AGENT);
-	assert.equal(headers.Accept, "text/html");
-	assert.equal(headers["Accept-Language"], "en-US,en;q=0.9");
-});
-
 test("getFallbackUserAgent prefers the configured setting and otherwise falls back to opencode", () => {
 	assert.equal(getFallbackUserAgent("my-agent/1.0"), "my-agent/1.0");
 	assert.equal(getFallbackUserAgent("  custom-agent  "), "custom-agent");
@@ -33,26 +24,14 @@ test("getFallbackUserAgent prefers the configured setting and otherwise falls ba
 	assert.equal(getFallbackUserAgent(undefined), OPENCODE_WEBFETCH_FALLBACK_USER_AGENT);
 });
 
-test("shouldRetryWithFallbackUserAgent only retries the Cloudflare challenge case", () => {
+test("describeRequestFailure names the network error code and cause chain", () => {
+	const refused = Object.assign(new Error("connect ECONNREFUSED 203.0.113.5:443"), { code: "ECONNREFUSED" });
+	assert.equal(describeRequestFailure(refused), "Request failed: connect ECONNREFUSED 203.0.113.5:443");
+
+	const tls = Object.assign(new Error("certificate has expired"), { code: "CERT_HAS_EXPIRED" });
 	assert.equal(
-		shouldRetryWithFallbackUserAgent({
-			status: 403,
-			headers: new Headers({ "cf-mitigated": "challenge" }),
-		}),
-		true,
+		describeRequestFailure(new Error("fetch failed", { cause: tls })),
+		"Request failed: fetch failed <- CERT_HAS_EXPIRED: certificate has expired",
 	);
-	assert.equal(
-		shouldRetryWithFallbackUserAgent({
-			status: 403,
-			headers: new Headers(),
-		}),
-		false,
-	);
-	assert.equal(
-		shouldRetryWithFallbackUserAgent({
-			status: 429,
-			headers: new Headers({ "cf-mitigated": "challenge" }),
-		}),
-		false,
-	);
+	assert.equal(describeRequestFailure("opaque"), "Request failed");
 });

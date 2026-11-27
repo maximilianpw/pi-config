@@ -18,7 +18,9 @@ function sanitizeStatusText(text: string) {
   return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
 }
 
-function sessionUsage(ctx: ExtensionContext) {
+type SessionUsage = ReturnType<typeof computeSessionUsage>;
+
+export function computeSessionUsage(entries: ReturnType<ExtensionContext["sessionManager"]["getEntries"]>) {
   let input = 0;
   let output = 0;
   let cacheRead = 0;
@@ -26,9 +28,11 @@ function sessionUsage(ctx: ExtensionContext) {
   let cost = 0;
   let latestCacheHitRate: number | undefined;
 
-  for (const entry of ctx.sessionManager.getEntries()) {
+  for (const entry of entries) {
     let usage;
-    if (entry.type === "message" && entry.message.role === "assistant") {
+    if (entry.type === "usage") {
+      usage = entry.usage;
+    } else if (entry.type === "message" && entry.message.role === "assistant") {
       usage = (entry.message as AssistantMessage).usage;
       const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
       latestCacheHitRate = promptTokens > 0 ? (usage.cacheRead / promptTokens) * 100 : undefined;
@@ -49,8 +53,46 @@ function sessionUsage(ctx: ExtensionContext) {
   return { input, output, cacheRead, cacheWrite, cost, latestCacheHitRate };
 }
 
-function statsContent(ctx: ExtensionContext, theme: Theme, width: number) {
-  const usage = sessionUsage(ctx);
+/**
+ * The footer renders on every frame, but session entries are append-only and every append
+ * moves the leaf, so totals only change with the session, the leaf, or the active model.
+ */
+function createSessionStatsCache(ctx: ExtensionContext) {
+  let cached:
+    | {
+        sessionId: string;
+        leafId: string | null;
+        model: ExtensionContext["model"];
+        usage: SessionUsage;
+        contextUsage: ReturnType<ExtensionContext["getContextUsage"]>;
+      }
+    | undefined;
+
+  return () => {
+    const sessionId = ctx.sessionManager.getSessionId();
+    const leafId = ctx.sessionManager.getLeafId();
+    const model = ctx.model;
+    if (cached?.sessionId === sessionId && cached.leafId === leafId && cached.model === model) {
+      return cached;
+    }
+    cached = {
+      sessionId,
+      leafId,
+      model,
+      usage: computeSessionUsage(ctx.sessionManager.getEntries()),
+      contextUsage: ctx.getContextUsage(),
+    };
+    return cached;
+  };
+}
+
+function statsContent(
+  ctx: ExtensionContext,
+  stats: ReturnType<ReturnType<typeof createSessionStatsCache>>,
+  theme: Theme,
+  width: number,
+) {
+  const { usage, contextUsage } = stats;
   const parts: string[] = [];
   if (usage.input) parts.push(`↑${formatTokens(usage.input)}`);
   if (usage.output) parts.push(`↓${formatTokens(usage.output)}`);
@@ -61,7 +103,6 @@ function statsContent(ctx: ExtensionContext, theme: Theme, width: number) {
   }
   if (usage.cost) parts.push(`$${usage.cost.toFixed(3)}`);
 
-  const contextUsage = ctx.getContextUsage();
   const contextWindow = contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 0;
   const contextPercentValue = contextUsage?.percent ?? 0;
   const contextDisplay = contextUsage?.percent === null
@@ -80,10 +121,11 @@ export function installModelFreeFooter(
 ) {
   if (ctx.mode !== "tui") return;
 
+  const sessionStats = createSessionStatsCache(ctx);
   setFooter((_tui, theme, footerData) => ({
     invalidate() {},
     render(width: number) {
-      const stats = statsContent(ctx, theme, width);
+      const stats = statsContent(ctx, sessionStats(), theme, width);
       const statsWidth = visibleWidth(stats);
       const statusText = [...footerData.getExtensionStatuses().entries()]
         .sort(([left], [right]) => left.localeCompare(right))

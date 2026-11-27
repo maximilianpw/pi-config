@@ -5,6 +5,7 @@ import {
   createRefreshCoordinator,
   createVcsStatusWidget,
   formatStatusBar,
+  createSummarizer,
   getSummary,
   projectName,
   updateWidget,
@@ -241,40 +242,44 @@ test("getSummary preserves jj and git display behavior", async () => {
   const jjRun: RunVcsCommand = async (command, args) => {
     assert.equal(command, "jj");
     if (args[0] === "root") return "/repo";
-    if (args[0] === "st") return "M file.ts\n? new.ts";
-    return args.at(-1) === "change_id.shortest()" ? "abc123" : "description";
+    assert.deepEqual(args.slice(0, 4), ["log", "-r", "@", "--no-graph"]);
+    return "abc123\ndescription\n2";
   };
   assert.equal(await getSummary("/repo", jjRun), "󱗆 abc123 · description · 2 changed files");
 
   const gitRun: RunVcsCommand = async (command, args) => {
     if (command === "jj") throw new Error("not jj");
-    if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return "/repo";
-    if (args[0] === "branch") return "main";
-    if (args[0] === "status") return " M file.ts";
-    return "deadbee";
+    if (args[0] === "rev-parse") return "/repo";
+    assert.deepEqual(args, ["--no-optional-locks", "status", "--porcelain=v2", "--branch"]);
+    return "# branch.oid deadbeefcafe\n# branch.head main\n1 .M N... 100644 100644 100644 a b file.ts";
   };
-  assert.equal(await getSummary("/repo", gitRun), " main · 1 changed file");
+  assert.equal(await getSummary("/repo", gitRun), " main · 1 changed file");
+
+  const detachedRun: RunVcsCommand = async (command, args) => {
+    if (command === "jj") throw new Error("not jj");
+    if (args[0] === "rev-parse") return "/repo";
+    return "# branch.oid deadbeefcafe\n# branch.head (detached)\n? new.ts\n? other.ts";
+  };
+  assert.equal(await getSummary("/repo", detachedRun), " detached deadbee · 2 changed files");
 });
 
-test("getSummary waits for sibling probes to settle after one fails", async () => {
-  const siblings = [deferred<string>(), deferred<string>()];
-  let sibling = 0;
-  const run: RunVcsCommand = async (_command, args) => {
-    if (args[0] === "root") return "/repo";
-    if (args[0] === "st") throw new Error("status failed");
-    return siblings[sibling++]!.promise;
-  };
-  let settled = false;
-  const summary = getSummary("/repo", run).finally(() => {
-    settled = true;
+test("createSummarizer detects the repository once and re-probes directories without one", async () => {
+  const calls: string[] = [];
+  let repo = false;
+  const summarize = createSummarizer(async (command, args) => {
+    calls.push(`${command} ${args[0]}`);
+    if (command === "jj") throw new Error("not jj");
+    if (!repo) throw new Error("not a repository");
+    if (args[0] === "rev-parse") return "/repo";
+    return "# branch.oid abc\n# branch.head main";
   });
-  await nextMicrotask();
-  assert.equal(settled, false);
-  siblings[0]!.resolve("abc123");
-  await nextMicrotask();
-  assert.equal(settled, false);
-  siblings[1]!.resolve("description");
-  await assert.rejects(summary, /status failed/);
+
+  assert.equal(await summarize("/repo"), undefined);
+  repo = true;
+  assert.equal(await summarize("/repo"), " main · 0 changed files");
+  calls.length = 0;
+  assert.equal(await summarize("/repo"), " main · 0 changed files");
+  assert.deepEqual(calls, ["git --no-optional-locks"]);
 });
 
 test("shutdown during startup prevents late writes", async () => {
@@ -313,14 +318,20 @@ test("input preserves continue semantics", async () => {
 });
 
 for (const event of ["model_select", "thinking_level_select"]) {
-  test(`${event} refreshes the status bar without waiting for a prompt`, async () => {
+  test(`${event} re-renders the status bar from the last summary without running VCS commands`, async () => {
     const handlers = new Map<string, (...args: any[]) => any>();
     const pi = {
       on(name: string, handler: (...args: any[]) => any) {
         handlers.set(name, handler);
       },
     } as unknown as ExtensionAPI;
-    createVcsStatusWidget({ summarize: async () => "clean" })(pi);
+    let summaries = 0;
+    createVcsStatusWidget({
+      summarize: async () => {
+        summaries += 1;
+        return "clean";
+      },
+    })(pi);
     const writes: Array<string[] | undefined> = [];
     const ctx = context("/repo", writes);
     await handlers.get("session_start")!({}, ctx);
@@ -336,6 +347,7 @@ for (const event of ["model_select", "thinking_level_select"]) {
 
     assert.deepEqual(writes.at(-1), [formatStatusBar(switched, "clean")]);
     assert.match(writes.at(-1)![0]!, /^Claude Opus 5\.5 › think:low › /);
+    assert.equal(summaries, 1);
     await handlers.get("session_shutdown")!({}, ctx);
   });
 }

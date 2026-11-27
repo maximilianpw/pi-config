@@ -22,24 +22,6 @@ async function run(command: string, args: string[], cwd: string): Promise<string
   return stdout.trimEnd();
 }
 
-async function isJjRepo(cwd: string, runCommand: RunVcsCommand) {
-  try {
-    await runCommand("jj", ["root"], cwd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isGitRepo(cwd: string, runCommand: RunVcsCommand) {
-  try {
-    await runCommand("git", ["rev-parse", "--show-toplevel"], cwd);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function changedFileLabel(count: number) {
   const fileLabel = count === 1 ? "file" : "files";
   return `${count} changed ${fileLabel}`;
@@ -104,50 +86,67 @@ export function formatStatusBar(
   return model + thinking + project + vcs;
 }
 
-function countJjChangedFiles(status: string) {
-  return status
-    .split("\n")
-    .filter((line) => /^[AMDRC?][ MDRC?]?\s+/.test(line.trim()))
-    .length;
-}
+const JJ_SUMMARY_TEMPLATE =
+  'change_id.shortest() ++ "\\n" ++ description.first_line() ++ "\\n" ++ self.diff().files().len()';
 
-function countGitChangedFiles(status: string) {
-  return status.split("\n").filter((line) => line.trim().length > 0).length;
-}
-
-async function settleCommands(commands: Promise<string>[]): Promise<string[]> {
-  const results = await Promise.allSettled(commands);
-  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failure) throw failure.reason;
-  return results.map((result) => (result as PromiseFulfilledResult<string>).value);
-}
-
+/** One jj process takes one working-copy snapshot instead of racing several. */
 async function getJjSummary(cwd: string, runCommand: RunVcsCommand) {
-  const [changeId, description, status] = await settleCommands([
-    runCommand("jj", ["log", "-r", "@", "--no-graph", "-T", "change_id.shortest()"], cwd),
-    runCommand("jj", ["log", "-r", "@", "--no-graph", "-T", "description.first_line()"], cwd),
-    runCommand("jj", ["st"], cwd),
-  ]);
-
+  const output = await runCommand("jj", ["log", "-r", "@", "--no-graph", "-T", JJ_SUMMARY_TEMPLATE], cwd);
+  const [changeId = "", description = "", changed = "0"] = output.split("\n");
   const label = description.trim() || "no description";
-  return `󱗆 ${changeId.trim()} · ${label} · ${changedFileLabel(countJjChangedFiles(status))}`;
+  return `󱗆 ${changeId.trim()} · ${label} · ${changedFileLabel(Number.parseInt(changed, 10) || 0)}`;
 }
 
+/** `--no-optional-locks` keeps the widget from taking index.lock while the agent runs git. */
 async function getGitSummary(cwd: string, runCommand: RunVcsCommand) {
-  const [branch, detachedHead, status] = await settleCommands([
-    runCommand("git", ["branch", "--show-current"], cwd),
-    runCommand("git", ["rev-parse", "--short", "HEAD"], cwd),
-    runCommand("git", ["status", "--porcelain=v1"], cwd),
-  ]);
-
-  const label = branch.trim() || `detached ${detachedHead.trim()}`;
-  return ` ${label} · ${changedFileLabel(countGitChangedFiles(status))}`;
+  const status = await runCommand(
+    "git",
+    ["--no-optional-locks", "status", "--porcelain=v2", "--branch"],
+    cwd,
+  );
+  let branch = "";
+  let oid = "";
+  let changed = 0;
+  for (const line of status.split("\n")) {
+    if (line.startsWith("# branch.head ")) branch = line.slice("# branch.head ".length);
+    else if (line.startsWith("# branch.oid ")) oid = line.slice("# branch.oid ".length);
+    else if (line.length > 0 && !line.startsWith("#")) changed += 1;
+  }
+  const label = branch && branch !== "(detached)" ? branch : `detached ${oid.slice(0, 7)}`;
+  return ` ${label} · ${changedFileLabel(changed)}`;
 }
 
-export async function getSummary(cwd: string, runCommand: RunVcsCommand = run) {
-  if (await isJjRepo(cwd, runCommand)) return getJjSummary(cwd, runCommand);
-  if (await isGitRepo(cwd, runCommand)) return getGitSummary(cwd, runCommand);
-  return undefined;
+type VcsKind = "jj" | "git";
+
+async function detectVcs(cwd: string, runCommand: RunVcsCommand): Promise<VcsKind | undefined> {
+  try {
+    await runCommand("jj", ["root", "--ignore-working-copy"], cwd);
+    return "jj";
+  } catch {}
+  try {
+    await runCommand("git", ["rev-parse", "--show-toplevel"], cwd);
+    return "git";
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Summarizes the working copy. Detected repositories are remembered per cwd so later
+ * refreshes spawn a single process; directories without a VCS are probed again.
+ */
+export function createSummarizer(runCommand: RunVcsCommand = run) {
+  const detected = new Map<string, VcsKind>();
+  return async (cwd: string) => {
+    const kind = detected.get(cwd) ?? (await detectVcs(cwd, runCommand));
+    if (!kind) return undefined;
+    detected.set(cwd, kind);
+    return kind === "jj" ? getJjSummary(cwd, runCommand) : getGitSummary(cwd, runCommand);
+  };
+}
+
+export function getSummary(cwd: string, runCommand: RunVcsCommand = run) {
+  return createSummarizer(runCommand)(cwd);
 }
 
 export async function updateWidget(
@@ -255,10 +254,25 @@ export interface VcsStatusWidgetOptions {
 }
 
 export function createVcsStatusWidget(options: VcsStatusWidgetOptions = {}) {
-  const summarize = options.summarize ?? getSummary;
-
   return function vcsStatusWidget(pi: ExtensionAPI) {
+    const baseSummarize = options.summarize ?? createSummarizer();
+    let lastSummary: { cwd: string; summary: string | undefined } | undefined;
+    const summarize = async (cwd: string) => {
+      const summary = await baseSummarize(cwd);
+      lastSummary = { cwd, summary };
+      return summary;
+    };
     const refresh = createRefreshCoordinator((ctx, isCurrent) => updateWidget(ctx, isCurrent, summarize));
+
+    // Model and thinking changes only alter the label, so re-render from the last VCS summary.
+    const rerender = (ctx: ExtensionContext) => {
+      if (!ctx.hasUI) return;
+      if (lastSummary?.cwd !== ctx.cwd) {
+        void refresh.request(ctx);
+        return;
+      }
+      ctx.ui.setWidget(WIDGET_ID, [formatStatusBar(ctx, lastSummary.summary, ctx.ui.theme)]);
+    };
 
     pi.on("session_start", async (_event, ctx) => {
       refresh.activate(ctx);
@@ -274,16 +288,12 @@ export function createVcsStatusWidget(options: VcsStatusWidgetOptions = {}) {
       void refresh.request(ctx);
     });
 
-    pi.on("model_select", (_event, ctx) => {
-      void refresh.request(ctx);
-    });
-
-    pi.on("thinking_level_select", (_event, ctx) => {
-      void refresh.request(ctx);
-    });
+    pi.on("model_select", (_event, ctx) => rerender(ctx));
+    pi.on("thinking_level_select", (_event, ctx) => rerender(ctx));
 
     pi.on("session_shutdown", async (_event, ctx) => {
       refresh.stop();
+      lastSummary = undefined;
       if (ctx.hasUI) ctx.ui.setWidget(WIDGET_ID, undefined);
     });
   };

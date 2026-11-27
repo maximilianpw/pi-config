@@ -12,7 +12,7 @@ export interface ToggleSkillsCommandDeps {
 }
 
 export async function runToggleSkillsCommand(ctx: ExtensionCommandContext, deps: ToggleSkillsCommandDeps): Promise<void> {
-  if (!ctx.hasUI) {
+  if (ctx.mode !== "tui") {
     ctx.ui.notify("/toggle-skills requires interactive mode", "error");
     return;
   }

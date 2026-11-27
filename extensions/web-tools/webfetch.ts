@@ -19,9 +19,7 @@ import { parseWebFetchToolParams } from "./webfetch-input.ts";
 export {
 	OPENCODE_WEBFETCH_DEFAULT_USER_AGENT,
 	OPENCODE_WEBFETCH_FALLBACK_USER_AGENT,
-	createWebFetchHeaders,
 	getFallbackUserAgent,
-	shouldRetryWithFallbackUserAgent,
 } from "./fetch-page.ts";
 
 export interface WebFetchToolComposition {
@@ -207,7 +205,7 @@ function renderSafeWebFetchError(error: WebFetchBoundaryError): string {
 		case "UrlCredentialsUnsupported":
 			return "URL credentials are not supported";
 		case "PublicWebRequestFailed":
-			return "Request failed";
+			return describeRequestFailure(error.cause);
 		case "PublicWebCancelled":
 			return "Web fetch cancelled";
 		case "PublicWebTimedOut":
@@ -241,4 +239,18 @@ function renderSafeWebFetchError(error: WebFetchBoundaryError): string {
 
 function textContent(text: string) {
 	return { type: "text" as const, text };
+}
+
+/** Names the network failure (refused, DNS, TLS, reset) so the model can tell a typo from an outage. */
+export function describeRequestFailure(cause: unknown): string {
+	const parts: string[] = [];
+	let current: unknown = cause;
+	for (let depth = 0; depth < 3 && current instanceof Error; depth += 1) {
+		const code = Reflect.get(current, "code");
+		const text = typeof code === "string" && !current.message.includes(code) ? `${code}: ${current.message}` : current.message;
+		if (text && !parts.includes(text)) parts.push(text);
+		current = current.cause;
+	}
+	const detail = parts.join(" <- ").replace(/\s+/g, " ").slice(0, 300);
+	return detail ? `Request failed: ${detail}` : "Request failed";
 }

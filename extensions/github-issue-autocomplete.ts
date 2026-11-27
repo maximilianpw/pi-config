@@ -22,14 +22,11 @@ function extractIssueToken(textBeforeCursor: string): string | undefined {
   return match?.[1];
 }
 
-function parseGitHubRepo(remoteUrl: string): string | undefined {
-  const sshMatch = remoteUrl.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/);
-  if (sshMatch) return sshMatch[1];
-
-  const httpsMatch = remoteUrl.match(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/);
-  if (httpsMatch) return httpsMatch[1];
-
-  return undefined;
+export function parseGitHubRepo(remoteUrl: string): string | undefined {
+  const match = remoteUrl.match(
+    /^(?:git@github\.com:|ssh:\/\/git@github\.com\/|https?:\/\/(?:[^@/]+@)?github\.com\/)([^/]+\/[^/]+?)(?:\.git)?\/?$/,
+  );
+  return match?.[1];
 }
 
 async function resolveGitHubRepo(pi: ExtensionAPI, cwd: string): Promise<RepoResolution> {
@@ -99,50 +96,66 @@ function createIssueAutocompleteProvider(
   };
 }
 
+const ISSUE_CACHE_MS = 5 * 60_000;
+const FAILURE_RETRY_MS = 30_000;
+
+type IssueCache =
+  | { readonly _tag: "empty" }
+  | { readonly _tag: "loading"; readonly promise: Promise<GitHubIssue[] | undefined> }
+  | { readonly _tag: "loaded"; readonly issues: GitHubIssue[] | undefined; readonly expiresAt: number };
+
 export default function (pi: ExtensionAPI): void {
-  pi.on("session_start", async (_event, ctx) => {
-    if (!ctx.hasUI) return;
+  pi.on("session_start", (_event, ctx) => {
+    if (ctx.mode !== "tui") return;
 
-    const resolved = await resolveGitHubRepo(pi, ctx.cwd);
-    if (!resolved.ok) {
-      const failure = resolved as Extract<RepoResolution, { ok: false }>;
-      if (!failure.silent) ctx.ui.notify(`github-issue-autocomplete: ${failure.error}`, "warning");
-      return;
-    }
-
-    const repo = resolved.repo;
-    let issuesPromise: Promise<GitHubIssue[] | undefined> | undefined;
+    let cache: IssueCache = { _tag: "empty" };
     let loadErrorShown = false;
-
-    const getIssues = async (): Promise<GitHubIssue[] | undefined> => {
-      issuesPromise ||= (async () => {
-        const result = await pi.exec(
-          "gh",
-          ["issue", "list", "--repo", repo, "--state", "open", "--limit", String(MAX_ISSUES), "--json", "number,title,state"],
-          { cwd: ctx.cwd, timeout: 5_000 },
-        );
-        if (result.code !== 0) {
-          if (!loadErrorShown) {
-            loadErrorShown = true;
-            ctx.ui.notify(`github-issue-autocomplete: gh issue list failed: ${result.stderr.trim() || result.code}`, "warning");
-          }
-          return undefined;
-        }
-
-        try {
-          return JSON.parse(result.stdout) as GitHubIssue[];
-        } catch {
-          if (!loadErrorShown) {
-            loadErrorShown = true;
-            ctx.ui.notify("github-issue-autocomplete: failed to parse gh issue list output", "warning");
-          }
-          return undefined;
-        }
-      })();
-      return issuesPromise;
+    const warnOnce = (message: string) => {
+      if (loadErrorShown) return;
+      loadErrorShown = true;
+      ctx.ui.notify(`github-issue-autocomplete: ${message}`, "warning");
     };
 
-    // Avoid a GitHub API call in sessions that never use issue completion.
+    // The repository and issues are looked up on the first `#`, so sessions that never
+    // complete an issue spawn nothing. A non-GitHub cwd caches "no issues" like a success.
+    const loadIssues = async (): Promise<{ issues: GitHubIssue[] | undefined; failed: boolean }> => {
+      const resolved = await resolveGitHubRepo(pi, ctx.cwd);
+      if (!resolved.ok) {
+        if (!resolved.silent) warnOnce(resolved.error);
+        return { issues: undefined, failed: false };
+      }
+      const result = await pi.exec(
+        "gh",
+        ["issue", "list", "--repo", resolved.repo, "--state", "open", "--limit", String(MAX_ISSUES), "--json", "number,title,state"],
+        { cwd: ctx.cwd, timeout: 5_000 },
+      );
+      if (result.code !== 0) {
+        warnOnce(`gh issue list failed: ${result.stderr.trim() || result.code}`);
+        return { issues: undefined, failed: true };
+      }
+      try {
+        return { issues: JSON.parse(result.stdout) as GitHubIssue[], failed: false };
+      } catch {
+        warnOnce("failed to parse gh issue list output");
+        return { issues: undefined, failed: true };
+      }
+    };
+
+    const getIssues = (): Promise<GitHubIssue[] | undefined> => {
+      if (cache._tag === "loading") return cache.promise;
+      if (cache._tag === "loaded" && cache.expiresAt > Date.now()) return Promise.resolve(cache.issues);
+      const promise = loadIssues().then(({ issues, failed }) => {
+        cache = {
+          _tag: "loaded",
+          issues,
+          expiresAt: Date.now() + (failed ? FAILURE_RETRY_MS : ISSUE_CACHE_MS),
+        };
+        return issues;
+      });
+      cache = { _tag: "loading", promise };
+      return promise;
+    };
+
     ctx.ui.addAutocompleteProvider((current) => createIssueAutocompleteProvider(current, getIssues));
   });
 }

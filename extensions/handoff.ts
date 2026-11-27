@@ -59,11 +59,16 @@ function getHandoffMessages(branch: SessionEntry[]): AgentMessage[] {
   return compactedBranch.map(entryToMessage).filter((message): message is AgentMessage => message !== undefined);
 }
 
+type HandoffGeneration =
+  | { readonly _tag: "generated"; readonly prompt: string }
+  | { readonly _tag: "cancelled" }
+  | { readonly _tag: "failed"; readonly message: string };
+
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("handoff", {
     description: "Generate a focused prompt and start a fresh session",
     handler: async (args, ctx) => {
-      if (!ctx.hasUI) {
+      if (ctx.mode !== "tui") {
         ctx.ui.notify("/handoff requires interactive mode", "error");
         return;
       }
@@ -90,11 +95,12 @@ export default function (pi: ExtensionAPI) {
       const conversationText = serializeConversation(convertToLlm(messages));
       const currentSessionFile = ctx.sessionManager.getSessionFile();
 
-      const generatedPrompt = await ctx.ui.custom<string | null>((tui, theme, _keybindings, done) => {
+      const model = ctx.model;
+      const generation = await ctx.ui.custom<HandoffGeneration>((tui, theme, _keybindings, done) => {
         const loader = new BorderedLoader(tui, theme, "Generating handoff prompt...");
-        loader.onAbort = () => done(null);
+        loader.onAbort = () => done({ _tag: "cancelled" });
 
-        const doGenerate = async () => {
+        const doGenerate = async (): Promise<HandoffGeneration> => {
           const userMessage: Message = {
             role: "user",
             content: [
@@ -107,7 +113,7 @@ export default function (pi: ExtensionAPI) {
           };
 
           const response = await ctx.modelRegistry.complete(
-            ctx.model!,
+            model,
             { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
             {
               signal: loader.signal,
@@ -116,28 +122,38 @@ export default function (pi: ExtensionAPI) {
             },
           );
 
-          if (response.stopReason === "aborted") return null;
-          return response.content
+          if (response.stopReason === "aborted") return { _tag: "cancelled" };
+          if (response.stopReason === "error") {
+            return { _tag: "failed", message: response.errorMessage ?? "the model returned an error" };
+          }
+          const prompt = response.content
             .filter((part): part is { type: "text"; text: string } => part.type === "text")
             .map((part) => part.text)
             .join("\n")
             .trim();
+          return prompt
+            ? { _tag: "generated", prompt }
+            : { _tag: "failed", message: "the model returned no text" };
         };
 
         doGenerate()
           .then(done)
-          .catch((error) => {
-            console.error("Handoff generation failed:", error);
-            done(null);
-          });
+          .catch((error: unknown) =>
+            done({ _tag: "failed", message: error instanceof Error ? error.message : String(error) }),
+          );
 
         return loader;
       });
 
-      if (!generatedPrompt) {
+      if (generation._tag === "cancelled") {
         ctx.ui.notify("Handoff cancelled", "info");
         return;
       }
+      if (generation._tag === "failed") {
+        ctx.ui.notify(`Handoff generation failed: ${generation.message}`, "error");
+        return;
+      }
+      const generatedPrompt = generation.prompt;
 
       const editedPrompt = await ctx.ui.editor("Edit handoff prompt", generatedPrompt);
       if (editedPrompt === undefined) {
